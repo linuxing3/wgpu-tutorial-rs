@@ -35,7 +35,7 @@ struct State {
 
     // texture
     diffuse_bind_group : wgpu::BindGroup,
-    diffuse_texture : texture::Texture, // NEW
+    diffuse_texture : texture::Texture,
 
     // camera
     camera : Camera,
@@ -76,10 +76,8 @@ impl State {
             dx12_shader_compiler : Default::default(),
         });
 
-        // # Safety
         //
-        // The surface needs to live as long as the window that created it.
-        // State owns the window so this should be safe.
+        // Surface
         let surface = unsafe {
 
             instance.create_surface(&window)
@@ -96,7 +94,7 @@ impl State {
             .next()
             .unwrap();
 
-        // device and queue with features
+        // Device and queue with features
 
         let (device, queue) = adapter
             .request_device(
@@ -118,21 +116,9 @@ impl State {
             .await
             .unwrap();
 
-        // surfaces
+        // surfaces formats
 
         let surface_caps = surface.get_capabilities(&adapter);
-
-        // Shader code in this tutorial assumes an sRGB surface texture. Using a
-        // different one will result all the colors coming out darker. If you
-        // want to support non sRGB surfaces, you'll need to account for that
-        // when drawing to the frame.
-        // let surface_format = surface_caps
-        //     .formats
-        //     .iter()
-        //     // .find(|p| p.describe().srgb = true)
-        //     .copied()
-        //     .next()
-        //     .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
             usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -147,7 +133,7 @@ impl State {
         //
         surface.configure(&device, &config);
 
-        // NOTE:
+        // NOTE: images
         // [doc] https://sotrh.github.io/learn-wgpu/beginner/tutorial5-textures/#loading-an-image-from-a-file
 
         let diffuse_bytes = include_bytes!("happy-tree.png");
@@ -195,7 +181,7 @@ impl State {
             label : Some("diffuse_bind_group"),
         });
 
-        // camera
+        // NOTE: camera
 
         let camera = Camera {
             eye : (0.0, 1.0, 2.0).into(),
@@ -273,8 +259,7 @@ impl State {
                 }),
             }]);
 
-        //
-        // Set up dear imgui wgpu renderer
+        // NOTE: Set up dear imgui wgpu renderer
         //
         let renderer_config = RendererConfig {
             texture_format : config.format,
@@ -285,7 +270,7 @@ impl State {
 
         let last_frame = Instant::now();
 
-        // NOTE: normal triangle render
+        // NOTE: Normal triangle render stuff
         // render_pipeline
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
@@ -434,16 +419,16 @@ impl State {
 
         let now = Instant::now();
 
-        self.imgui_context
-            .io_mut()
-            .update_delta_time(now - self.last_frame);
+        let io = self.imgui_context.io_mut();
+
+        io.update_delta_time(now - self.last_frame);
 
         self.last_frame = now;
 
         let frame = self.surface.get_current_texture()?;
 
         self.platform
-            .prepare_frame(self.imgui_context.io_mut(), &self.window)
+            .prepare_frame(io, &self.window)
             .expect("Failed to prepare frame");
 
         let ui = self.imgui_context.frame();
@@ -483,12 +468,6 @@ impl State {
             ui.show_demo_window(&mut self.demo_open);
         }
 
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label : Some("Render Encoder"),
-            });
-
         if self.last_cursor != ui.mouse_cursor() {
 
             self.last_cursor = ui.mouse_cursor();
@@ -496,12 +475,18 @@ impl State {
             self.platform.prepare_render(ui, &self.window);
         }
 
-        // Render triangle
-        {
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-            let view = frame
-                .texture
-                .create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label : Some("Render Encoder"),
+            });
+
+        // Render pass scope
+        {
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label : Some("Render Pass"),
@@ -528,8 +513,7 @@ impl State {
 
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.
 
-            // NOTE:
-            // render imgui
+            // NOTE: render imgui
 
             self.renderer
                 .render(
@@ -555,7 +539,7 @@ impl State {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 
-struct Vertex_Basic {
+struct VertexBasic {
     position : [f32; 3],
     color : [f32; 3],
 }

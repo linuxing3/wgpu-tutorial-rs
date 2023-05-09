@@ -1,9 +1,10 @@
+// lib.rs
+
 extern crate imgui_winit_support;
 
 use std::time::Instant;
 use winit::{
     dpi::LogicalSize,
-    event::*,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
@@ -14,101 +15,6 @@ use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
 
 use wgpu::util::DeviceExt;
-
-pub async fn run() {
-
-    env_logger::init();
-
-    let event_loop = EventLoop::new();
-
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
-
-    let mut state = State::new(window).await;
-
-    event_loop.run(move |event, _, control_flow| {
-
-        match event {
-            Event::RedrawEventsCleared => {
-
-                state.update();
-
-                match state.render() {
-                    Ok(_) => {}
-                    // Reconfigure the surface if lost
-                    Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
-                    // The system is out of memory, we should probably quit
-                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                    // All other errors (Outdated, Timeout) should be resolved by the next frame
-                    Err(e) => eprintln!("{:?}", e),
-                }
-            }
-            // Event::RedrawRequested(window_id) if window_id == state.window().id() => {
-            //
-            //     state.update();
-            //
-            //     match state.render() {
-            //         Ok(_) => {}
-            //         // Reconfigure the surface if lost
-            //         Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
-            //         // The system is out of memory, we should probably quit
-            //         Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-            //         // All other errors (Outdated, Timeout) should be resolved by the next frame
-            //         Err(e) => eprintln!("{:?}", e),
-            //     }
-            // }
-            Event::MainEventsCleared => {
-
-                // RedrawRequested will only trigger once, unless we manually
-                // request it.
-                state.window().request_redraw();
-            }
-            //
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-
-                state.resize(state.window().inner_size());
-            }
-            Event::WindowEvent {
-                ref event,
-                window_id,
-            } if window_id == state.window().id() => {
-
-                if !state.input(event) {
-
-                    match event {
-                        WindowEvent::CloseRequested
-                        | WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    state: ElementState::Pressed,
-                                    virtual_keycode: Some(VirtualKeyCode::Escape),
-                                    ..
-                                },
-                            ..
-                        } => *control_flow = ControlFlow::Exit,
-                        WindowEvent::Resized(physical_size) => {
-
-                            state.resize(*physical_size);
-                        }
-                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-
-                            // new_inner_size is &&mut so we have to dereference it twice
-                            state.resize(**new_inner_size);
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        state
-            .platform
-            .handle_event(state.imgui_context.io_mut(), &state.window, &event);
-    });
-}
 
 struct State {
     surface : wgpu::Surface,
@@ -122,6 +28,7 @@ struct State {
     index_buffer : wgpu::Buffer,
     // num_vertices : u32,
     num_indices : u32,
+    clear_color : wgpu::Color,
 
     // imgui
     imgui_context : imgui::Context,
@@ -136,6 +43,13 @@ impl State {
     async fn new(window : Window) -> Self {
 
         let hidpi_factor = window.scale_factor();
+
+        let clear_color = wgpu::Color {
+            r : 0.1,
+            g : 0.2,
+            b : 0.3,
+            a : 1.0,
+        };
 
         let size = window.inner_size();
 
@@ -166,6 +80,8 @@ impl State {
             .next()
             .unwrap();
 
+        // device and queue with features
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
@@ -186,44 +102,36 @@ impl State {
             .await
             .unwrap();
 
+        // surfaces
+
         let surface_caps = surface.get_capabilities(&adapter);
 
         // Shader code in this tutorial assumes an sRGB surface texture. Using a
         // different one will result all the colors coming out darker. If you
         // want to support non sRGB surfaces, you'll need to account for that
         // when drawing to the frame.
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .copied()
-            .next()
-            .unwrap_or(surface_caps.formats[0]);
+        // let surface_format = surface_caps
+        //     .formats
+        //     .iter()
+        //     // .find(|p| p.describe().srgb = true)
+        //     .copied()
+        //     .next()
+        //     .unwrap_or(surface_caps.formats[0]);
 
         let config = wgpu::SurfaceConfiguration {
-            usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format : surface_format,
-            width : size.width,
-            height : size.height,
-            present_mode : surface_caps.present_modes[0],
-            alpha_mode : surface_caps.alpha_modes[0],
-            view_formats : vec![],
-        };
-
-        surface.configure(&device, &config);
-
-        // Set up swap chain
-        let surface_desc = wgpu::SurfaceConfiguration {
             usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
             format : wgpu::TextureFormat::Bgra8UnormSrgb,
             width : size.width,
             height : size.height,
-            present_mode : wgpu::PresentMode::Fifo,
-            alpha_mode : wgpu::CompositeAlphaMode::Auto,
+            present_mode : surface_caps.present_modes[0],
+            alpha_mode : surface_caps.alpha_modes[0],
             view_formats : vec![wgpu::TextureFormat::Bgra8Unorm],
         };
 
-        surface.configure(&device, &surface_desc);
+        //
+        surface.configure(&device, &config);
 
+        // NOTE:
         // Set up dear imgui
         let mut imgui_context = imgui::Context::create();
 
@@ -256,7 +164,7 @@ impl State {
         // Set up dear imgui wgpu renderer
         //
         let renderer_config = RendererConfig {
-            texture_format : surface_desc.format,
+            texture_format : config.format,
             ..Default::default()
         };
 
@@ -264,6 +172,7 @@ impl State {
 
         let last_frame = Instant::now();
 
+        // NOTE: normal triangle render
         // render_pipeline
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
@@ -288,7 +197,7 @@ impl State {
                 entry_point : "fs_main",
                 targets : &[Some(wgpu::ColorTargetState {
                     // 4.
-                    format : config.format,
+                    format : wgpu::TextureFormat::Bgra8UnormSrgb,
                     blend : Some(wgpu::BlendState::REPLACE),
                     write_mask : wgpu::ColorWrites::ALL,
                 })],
@@ -343,6 +252,7 @@ impl State {
             queue,
             config,
             size,
+            clear_color,
             render_pipeline,
             vertex_buffer,
             index_buffer,
@@ -452,13 +362,12 @@ impl State {
             self.platform.prepare_render(ui, &self.window);
         }
 
-        // triangle
-
-        let view = frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
+        // Render triangle
         {
+
+            let view = frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label : Some("Render Pass"),
@@ -466,26 +375,12 @@ impl State {
                     view : &view,
                     resolve_target : None,
                     ops : wgpu::Operations {
-                        load : wgpu::LoadOp::Clear(wgpu::Color {
-                            r : 0.1,
-                            g : 0.2,
-                            b : 0.3,
-                            a : 1.0,
-                        }),
+                        load : wgpu::LoadOp::Clear(self.clear_color),
                         store : true,
                     },
                 })],
                 depth_stencil_attachment : None,
             });
-
-            self.renderer
-                .render(
-                    self.imgui_context.render(),
-                    &self.queue,
-                    &self.device,
-                    &mut render_pass,
-                )
-                .expect("Rendering failed");
 
             render_pass.set_pipeline(&self.render_pipeline); // 2.
 
@@ -494,6 +389,18 @@ impl State {
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.
+
+            // NOTE:
+            // render imgui
+
+            self.renderer
+                .render(
+                    self.imgui_context.render(),
+                    &self.queue,
+                    &self.device,
+                    &mut render_pass,
+                )
+                .expect("Render imgui failed");
 
             drop(render_pass);
         }
@@ -541,7 +448,6 @@ impl Vertex {
     }
 }
 
-// lib.rs
 const VERTICES : &[Vertex] = &[
     Vertex {
         position : [-0.0868241, 0.49240386, 0.0],
@@ -582,41 +488,92 @@ const INDICES : &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
 //     },
 // ];
 
-// const VERTICES : &[Vertex] = &[
-//     Vertex {
-//         position : [-0.0868241, 0.49240386, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // A
-//     Vertex {
-//         position : [-0.49513406, 0.06958647, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // B
-//     Vertex {
-//         position : [0.44147372, 0.2347359, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // E
-//     Vertex {
-//         position : [-0.49513406, 0.06958647, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // B
-//     Vertex {
-//         position : [-0.21918549, -0.44939706, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // C
-//     Vertex {
-//         position : [0.44147372, 0.2347359, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // E
-//     Vertex {
-//         position : [-0.21918549, -0.44939706, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // C
-//     Vertex {
-//         position : [0.35966998, -0.3473291, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // D
-//     Vertex {
-//         position : [0.44147372, 0.2347359, 0.0],
-//         color : [0.5, 0.0, 0.5],
-//     }, // E
-// ];
+pub async fn run() {
+
+    env_logger::init();
+
+    let event_loop = EventLoop::new();
+
+    let window = WindowBuilder::new().build(&event_loop).unwrap();
+
+    window.set_inner_size(LogicalSize {
+        width : 1280.0,
+        height : 720.0,
+    });
+
+    let mut state = State::new(window).await;
+
+    event_loop.run(move |event, _, control_flow| {
+
+        match event {
+            Event::RedrawEventsCleared => {
+
+                state.update();
+
+                match state.render() {
+                    Ok(_) => {}
+                    // Reconfigure the surface if lost
+                    Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+                    // The system is out of memory, we should probably quit
+                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                    // All other errors (Outdated, Timeout) should be resolved by the next frame
+                    Err(e) => eprintln!("{:?}", e),
+                }
+            }
+            Event::RedrawRequested(window_id) if window_id == state.window().id() => {
+
+                state.update();
+            }
+            Event::MainEventsCleared => {
+
+                // RedrawRequested will only trigger once, unless we manually
+                // request it.
+                state.window().request_redraw();
+            }
+            //
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+
+                state.resize(state.window().inner_size());
+            }
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if window_id == state.window().id() => {
+
+                if !state.input(event) {
+
+                    match event {
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        WindowEvent::Resized(physical_size) => {
+
+                            state.resize(*physical_size);
+                        }
+                        WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+
+                            // new_inner_size is &&mut so we have to dereference it twice
+                            state.resize(**new_inner_size);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        state
+            .platform
+            .handle_event(state.imgui_context.io_mut(), &state.window, &event);
+    });
+}

@@ -1,9 +1,17 @@
+extern crate imgui_winit_support;
+
+use std::time::Instant;
 use winit::{
+    dpi::LogicalSize,
     event::*,
+    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
     window::WindowBuilder,
 };
+
+use imgui::*;
+use imgui_wgpu::{Renderer, RendererConfig};
 
 use wgpu::util::DeviceExt;
 
@@ -20,7 +28,7 @@ pub async fn run() {
     event_loop.run(move |event, _, control_flow| {
 
         match event {
-            Event::RedrawRequested(window_id) if window_id == state.window().id() => {
+            Event::RedrawEventsCleared => {
 
                 state.update();
 
@@ -34,6 +42,20 @@ pub async fn run() {
                     Err(e) => eprintln!("{:?}", e),
                 }
             }
+            // Event::RedrawRequested(window_id) if window_id == state.window().id() => {
+            //
+            //     state.update();
+            //
+            //     match state.render() {
+            //         Ok(_) => {}
+            //         // Reconfigure the surface if lost
+            //         Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+            //         // The system is out of memory, we should probably quit
+            //         Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+            //         // All other errors (Outdated, Timeout) should be resolved by the next frame
+            //         Err(e) => eprintln!("{:?}", e),
+            //     }
+            // }
             Event::MainEventsCleared => {
 
                 // RedrawRequested will only trigger once, unless we manually
@@ -41,6 +63,13 @@ pub async fn run() {
                 state.window().request_redraw();
             }
             //
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+
+                state.resize(state.window().inner_size());
+            }
             Event::WindowEvent {
                 ref event,
                 window_id,
@@ -74,6 +103,10 @@ pub async fn run() {
             }
             _ => {}
         }
+
+        state
+            .platform
+            .handle_event(state.imgui_context.io_mut(), &state.window, &event);
     });
 }
 
@@ -89,10 +122,20 @@ struct State {
     index_buffer : wgpu::Buffer,
     // num_vertices : u32,
     num_indices : u32,
+
+    // imgui
+    imgui_context : imgui::Context,
+    last_frame : Instant,
+    last_cursor : Option<imgui::MouseCursor>,
+    renderer : Renderer,
+    platform : imgui_winit_support::WinitPlatform,
+    demo_open : bool,
 }
 
 impl State {
     async fn new(window : Window) -> Self {
+
+        let hidpi_factor = window.scale_factor();
 
         let size = window.inner_size();
 
@@ -153,7 +196,6 @@ impl State {
             .formats
             .iter()
             .copied()
-            .filter(|f| f.is_srgb())
             .next()
             .unwrap_or(surface_caps.formats[0]);
 
@@ -168,6 +210,59 @@ impl State {
         };
 
         surface.configure(&device, &config);
+
+        // Set up swap chain
+        let surface_desc = wgpu::SurfaceConfiguration {
+            usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format : wgpu::TextureFormat::Bgra8UnormSrgb,
+            width : size.width,
+            height : size.height,
+            present_mode : wgpu::PresentMode::Fifo,
+            alpha_mode : wgpu::CompositeAlphaMode::Auto,
+            view_formats : vec![wgpu::TextureFormat::Bgra8Unorm],
+        };
+
+        surface.configure(&device, &surface_desc);
+
+        // Set up dear imgui
+        let mut imgui_context = imgui::Context::create();
+
+        let mut platform = imgui_winit_support::WinitPlatform::init(&mut imgui_context);
+
+        platform.attach_window(
+            imgui_context.io_mut(),
+            &window,
+            imgui_winit_support::HiDpiMode::Default,
+        );
+
+        imgui_context.set_ini_filename(None);
+
+        let font_size = (13.0 * hidpi_factor) as f32;
+
+        imgui_context.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+
+        imgui_context
+            .fonts()
+            .add_font(&[FontSource::DefaultFontData {
+                config : Some(imgui::FontConfig {
+                    oversample_h : 1,
+                    pixel_snap_h : true,
+                    size_pixels : font_size,
+                    ..Default::default()
+                }),
+            }]);
+
+        //
+        // Set up dear imgui wgpu renderer
+        //
+        let renderer_config = RendererConfig {
+            texture_format : surface_desc.format,
+            ..Default::default()
+        };
+
+        let renderer = Renderer::new(&mut imgui_context, &device, &queue, renderer_config);
+
+        let last_frame = Instant::now();
 
         // render_pipeline
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
@@ -239,6 +334,8 @@ impl State {
 
         let num_indices = INDICES.len() as u32;
 
+        let last_cursor = None;
+
         Self {
             window,
             surface,
@@ -250,6 +347,12 @@ impl State {
             vertex_buffer,
             index_buffer,
             num_indices,
+            renderer,
+            imgui_context,
+            platform,
+            last_frame,
+            demo_open : true,
+            last_cursor,
         }
     }
 
@@ -262,9 +365,15 @@ impl State {
 
             self.size = new_size;
 
-            self.config.width = new_size.width;
-
-            self.config.height = new_size.height;
+            self.config = wgpu::SurfaceConfiguration {
+                usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
+                format : wgpu::TextureFormat::Bgra8UnormSrgb,
+                width : new_size.width,
+                height : new_size.height,
+                present_mode : wgpu::PresentMode::Fifo,
+                alpha_mode : wgpu::CompositeAlphaMode::Auto,
+                view_formats : vec![wgpu::TextureFormat::Bgra8Unorm],
+            };
 
             self.surface.configure(&self.device, &self.config);
         }
@@ -276,17 +385,78 @@ impl State {
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
 
-        let output = self.surface.get_current_texture()?;
+        // imgui stuff
+        let delta_s = self.last_frame.elapsed();
 
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let now = Instant::now();
+
+        self.imgui_context
+            .io_mut()
+            .update_delta_time(now - self.last_frame);
+
+        self.last_frame = now;
+
+        let frame = self.surface.get_current_texture()?;
+
+        self.platform
+            .prepare_frame(self.imgui_context.io_mut(), &self.window)
+            .expect("Failed to prepare frame");
+
+        let ui = self.imgui_context.frame();
+
+        {
+
+            let window = ui.window("Hello world");
+
+            window
+                .size([300.0, 100.0], Condition::FirstUseEver)
+                .build(|| {
+
+                    ui.text("Hello world!");
+
+                    ui.text("This...is...imgui-rs on WGPU!");
+
+                    ui.separator();
+
+                    let mouse_pos = ui.io().mouse_pos;
+
+                    ui.text(format!(
+                        "Mouse Position: ({:.1},{:.1})",
+                        mouse_pos[0], mouse_pos[1]
+                    ));
+                });
+
+            let window = ui.window("Hello too");
+
+            window
+                .size([400.0, 200.0], Condition::FirstUseEver)
+                .position([400.0, 200.0], Condition::FirstUseEver)
+                .build(|| {
+
+                    ui.text(format!("Frametime: {delta_s:?}"));
+                });
+
+            ui.show_demo_window(&mut self.demo_open);
+        }
 
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label : Some("Render Encoder"),
             });
+
+        if self.last_cursor != ui.mouse_cursor() {
+
+            self.last_cursor = ui.mouse_cursor();
+
+            self.platform.prepare_render(ui, &self.window);
+        }
+
+        // triangle
+
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         {
 
@@ -308,6 +478,15 @@ impl State {
                 depth_stencil_attachment : None,
             });
 
+            self.renderer
+                .render(
+                    self.imgui_context.render(),
+                    &self.queue,
+                    &self.device,
+                    &mut render_pass,
+                )
+                .expect("Rendering failed");
+
             render_pass.set_pipeline(&self.render_pipeline); // 2.
 
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
@@ -315,12 +494,14 @@ impl State {
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.
+
+            drop(render_pass);
         }
 
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        output.present();
+        frame.present();
 
         Ok(())
     }

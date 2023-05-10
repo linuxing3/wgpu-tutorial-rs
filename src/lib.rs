@@ -1,6 +1,12 @@
 // lib.rs
 
+mod layer;
+mod layer_renderer;
 mod texture;
+
+// use crate::layer;
+// use crate::layer_renderer;
+// use crate::texture;
 
 extern crate imgui_winit_support;
 
@@ -433,40 +439,20 @@ impl State {
 
         let ui = self.imgui_context.frame();
 
+        if let Some(window) = ui
+            .window("Example Window")
+            .size([100.0, 50.0], imgui::Condition::FirstUseEver)
+            .begin()
         {
 
-            let window = ui.window("Hello world");
+            let bytes = include_bytes!("happy-tree.png");
 
-            window
-                .size([300.0, 100.0], Condition::FirstUseEver)
-                .build(|| {
+            let mut x_layer = layer::Layer::new(&self.device, &self.queue, bytes, "happy-tree.png");
 
-                    ui.text("Hello world!");
+            x_layer.attach_text(&ui, "Layer test");
 
-                    ui.text("This...is...imgui-rs on WGPU!");
-
-                    ui.separator();
-
-                    let mouse_pos = ui.io().mouse_pos;
-
-                    ui.text(format!(
-                        "Mouse Position: ({:.1},{:.1})",
-                        mouse_pos[0], mouse_pos[1]
-                    ));
-                });
-
-            let window = ui.window("Hello too");
-
-            window
-                .size([400.0, 200.0], Condition::FirstUseEver)
-                .position([400.0, 200.0], Condition::FirstUseEver)
-                .build(|| {
-
-                    ui.text(format!("Frametime: {delta_s:?}"));
-                });
-
-            ui.show_demo_window(&mut self.demo_open);
-        }
+            window.end();
+        };
 
         if self.last_cursor != ui.mouse_cursor() {
 
@@ -629,7 +615,7 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-struct Camera {
+pub struct Camera {
     eye : cgmath::Point3<f32>,
     target : cgmath::Point3<f32>,
     up : cgmath::Vector3<f32>,
@@ -640,7 +626,7 @@ struct Camera {
 }
 
 impl Camera {
-    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+    pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
 
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
 
@@ -653,12 +639,12 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 
-struct CameraUniform {
+pub struct CameraUniform {
     view_proj : [[f32; 4]; 4],
 }
 
 impl CameraUniform {
-    fn new() -> Self {
+    pub fn new() -> Self {
 
         use cgmath::SquareMatrix;
 
@@ -667,13 +653,13 @@ impl CameraUniform {
         }
     }
 
-    fn update_view_proj(&mut self, camera : &Camera) {
+    pub fn update_view_proj(&mut self, camera : &Camera) {
 
         self.view_proj = (OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix()).into();
     }
 }
 
-struct CameraController {
+pub struct CameraController {
     speed : f32,
     is_up_pressed : bool,
     is_down_pressed : bool,
@@ -684,7 +670,7 @@ struct CameraController {
 }
 
 impl CameraController {
-    fn new(speed : f32) -> Self {
+    pub fn new(speed : f32) -> Self {
 
         Self {
             speed,
@@ -697,7 +683,7 @@ impl CameraController {
         }
     }
 
-    fn process_events(&mut self, event : &WindowEvent) -> bool {
+    pub fn process_events(&mut self, event : &WindowEvent) -> bool {
 
         match event {
             WindowEvent::KeyboardInput {
@@ -756,7 +742,7 @@ impl CameraController {
         }
     }
 
-    fn update_camera(&self, camera : &mut Camera) {
+    pub fn update_camera(&self, camera : &mut Camera) {
 
         use cgmath::InnerSpace;
 

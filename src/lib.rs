@@ -451,6 +451,8 @@ impl State {
 
             x_layer.attach_text(&ui, "Layer test");
 
+            x_layer.render(&self.device, &self.queue);
+
             window.end();
         };
 

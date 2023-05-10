@@ -4,19 +4,9 @@ use imgui::*;
 
 use crate::texture;
 
-// #[derive(Debug)]
-// pub struct Texture {
-//     context: Arc<C>,
-//     id: ObjectId,
-//     data: Box<Data>,
-//     owned: bool,
-//     descriptor: TextureDescriptor<'static>,
-// }
-// Any is a static trait
-// type Data = dyn Any + Send + Sync;
-
 pub struct LayerRenderer {
     pub texture : texture::Texture,
+    pub data : Vec<u8>,
     pub height : u32,
     pub width : u32,
 }
@@ -24,16 +14,17 @@ pub struct LayerRenderer {
 impl LayerRenderer {
     pub fn new(device : &wgpu::Device, queue : &wgpu::Queue, bytes : &[u8], path : &str) -> Self {
 
-        let _texture = texture::Texture::from_bytes(&device, &queue, bytes, path).unwrap(); // CHANGED!
+        let texture = texture::Texture::from_bytes(&device, &queue, bytes, path).unwrap(); // CHANGED!
 
-        let _width = _texture.texture.width();
+        let width = texture.texture.width();
 
-        let _height = _texture.texture.height();
+        let height = texture.texture.height();
 
         LayerRenderer {
-            texture : _texture,
-            height : _height,
-            width : _width,
+            texture,
+            data : bytes.to_vec(),
+            height,
+            width,
         }
     }
 
@@ -44,32 +35,82 @@ impl LayerRenderer {
         label : &str,
     ) -> Self {
 
-        let _texture = texture::Texture::from_bytes(&device, &queue, data, label).unwrap(); // CHANGED!
+        let texture = texture::Texture::from_bytes(&device, &queue, data, label)
+            .expect("Failed to load data"); // CHANGED!
 
-        let _width = _texture.texture.width();
+        let width = texture.texture.width();
 
-        let _height = _texture.texture.height();
+        let height = texture.texture.height();
 
         LayerRenderer {
-            texture : _texture,
-            height : _height,
-            width : _width,
+            texture,
+            data : data.to_vec(),
+            height,
+            width,
         }
     }
 
     pub fn resize() {}
 
-    pub fn render(&mut self, data : &mut [u8]) {
+    pub fn attach_image(&mut self, ui : &imgui::Ui) {
 
-        for y in 0..self.height as usize {
+        {
 
-            for x in 0..self.width as usize {
+            ui.invisible_button("Smooth Button", [100.0, 100.0]);
 
-                let color = Self::per_pixel(x as u32, y as u32);
+            let draw_list = ui.get_window_draw_list();
 
-                data[x + y * self.width as usize] = Self::convert_color(color);
+            // draw_list
+            //     .add_image_rounded(
+            //         self.texture.texture.into,
+            //         ui.item_rect_min(),
+            //         ui.item_rect_max(),
+            //         16.0,
+            //     ) // Tint brighter for
+            //     .col([2.0, 0.5, 0.5, 1.0])
+            //     // Rounding on each corner can be changed separately
+            //     .round_top_left(ui.frame_count() / 60 % 4 == 0)
+            //     .round_top_right((ui.frame_count() + 1) / 60 % 4 == 1)
+            //     .round_bot_right((ui.frame_count() + 3) / 60 % 4 == 2)
+            //     .round_bot_left((ui.frame_count() + 2) / 60 % 4 == 3)
+            //     .build();
+        }
+    }
+
+    pub fn render(&mut self, device : &wgpu::Device, queue : &wgpu::Queue) {
+
+        //
+        for y in 0..self.height {
+
+            for x in 0..self.width {
+
+                // Insert RGB values
+                self.data.push(y as u8);
+
+                self.data.push(x as u8);
+
+                self.data.push((y + x) as u8);
+
+                self.data.push(1.0 as u8);
             }
         }
+
+        // for y in 0..self.height as usize {
+        //
+        //     for x in 0..self.width as usize {
+        //
+        //         let color = Self::per_pixel(x as u32, y as u32);
+        //
+        //         let index = x + y * self.width as usize;
+        //
+        //         if index < self.width as usize * self.height as usize {
+        //
+        //             data[index] = Self::convert_color(color);
+        //         }
+        //     }
+        // }
+
+        Self::from_bytes(device, queue, &self.data, "test");
     }
 
     fn convert_color(color : wgpu::Color) -> u8 {

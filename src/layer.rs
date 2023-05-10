@@ -14,8 +14,8 @@ pub struct Vector2<T> {
 }
 
 pub struct Layer {
-    renderer : LayerRenderer,
-    last_frame : Instant,
+    pub renderer : LayerRenderer,
+    pub last_frame : Instant,
 }
 
 impl Layer {
@@ -33,15 +33,6 @@ impl Layer {
 
     pub fn attach_text(&mut self, ui : &imgui::Ui, text : &str) { ui.text(text); }
 
-    pub fn attach_image(
-        &mut self,
-        ui : &imgui::Ui,
-        text : &impl AsRef<str>,
-        texture_id : TextureId,
-        size : impl Into<Vector2<f32>>,
-    ) {
-    }
-
     pub fn on_dettach(&mut self) {
 
         unimplemented!();
@@ -52,12 +43,12 @@ impl Layer {
         unimplemented!();
     }
 
-    pub fn render(&mut self, bytes : &mut [u8]) {
+    pub fn render(&mut self, device : &wgpu::Device, queue : &wgpu::Queue) {
 
         let now = Instant::now();
 
         self.last_frame = now;
 
-        self.renderer.render(bytes);
+        self.renderer.render(device, queue);
     }
 }

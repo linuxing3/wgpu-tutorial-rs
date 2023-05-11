@@ -6,22 +6,15 @@ use crate::State;
 
 use crate::Camera;
 
-#[repr(C)]
-
-pub struct Vector2<T> {
-    pub x : T,
-    pub y : T,
-}
-
 pub struct Layer {
     pub renderer : LayerRenderer,
     pub last_frame : Instant,
 }
 
 impl Layer {
-    pub fn new(device : &wgpu::Device, queue : &wgpu::Queue, bytes : &[u8], path : &str) -> Layer {
+    pub fn new(id : imgui::TextureId) -> Layer {
 
-        let renderer = LayerRenderer::new(device, queue, bytes, path);
+        let renderer = LayerRenderer::new(id);
 
         let last_frame = Instant::now();
 
@@ -43,12 +36,12 @@ impl Layer {
         unimplemented!();
     }
 
-    pub fn render(&mut self, device : &wgpu::Device, queue : &wgpu::Queue) {
+    pub fn render(&mut self, ui : &imgui::Ui) {
 
         let now = Instant::now();
 
         self.last_frame = now;
 
-        self.renderer.render(device, queue);
+        self.renderer.render(ui);
     }
 }

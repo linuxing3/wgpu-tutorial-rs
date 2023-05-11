@@ -1,5 +1,6 @@
 use anyhow::*;
 use image::GenericImageView;
+use imgui_wgpu::TextureConfig;
 
 pub struct Texture {
     pub texture : wgpu::Texture,
@@ -18,6 +19,44 @@ impl Texture {
         let img = image::load_from_memory(bytes)?;
 
         Self::from_image(device, queue, &img, Some(label))
+    }
+
+    pub fn imgui_texture_from_image(
+        device : &wgpu::Device,
+        queue : &wgpu::Queue,
+        renderer : &imgui_wgpu::Renderer,
+        bytes : &[u8],
+        format : image::ImageFormat,
+    ) -> (Vec<u8>, imgui_wgpu::Texture) {
+
+        let image =
+            image::load_from_memory_with_format(bytes, format).expect("invalid image_format");
+
+        let rgba = image.to_rgba8();
+
+        // NOTE: raw data with rgba8 format
+        let raw_data = rgba.into_raw();
+
+        let dimensions = image.dimensions();
+
+        let size = wgpu::Extent3d {
+            width : dimensions.0,
+            height : dimensions.1,
+            ..Default::default()
+        };
+
+        let texture_config = imgui_wgpu::TextureConfig {
+            size,
+            label : Some("lenna texture"),
+            format : Some(wgpu::TextureFormat::Rgba8Unorm),
+            ..Default::default()
+        };
+
+        let texture = imgui_wgpu::Texture::new(&device, &renderer, texture_config);
+
+        texture.write(&queue, &raw_data, dimensions.0, dimensions.1);
+
+        (raw_data, texture)
     }
 
     pub fn from_image(

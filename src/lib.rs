@@ -272,7 +272,7 @@ impl State {
             ..Default::default()
         };
 
-        let renderer = Renderer::new(&mut imgui_context, &device, &queue, renderer_config);
+        let mut renderer = Renderer::new(&mut imgui_context, &device, &queue, renderer_config);
 
         let last_frame = Instant::now();
 
@@ -440,21 +440,49 @@ impl State {
         let ui = self.imgui_context.frame();
 
         if let Some(window) = ui
-            .window("Example Window")
+            .window("Layer Example Window")
             .size([100.0, 50.0], imgui::Condition::FirstUseEver)
             .begin()
         {
 
-            let bytes = include_bytes!("happy-tree.png");
+            // let mut x_layer = layer::Layer::new(happy_texture_id);
 
-            let mut x_layer = layer::Layer::new(&self.device, &self.queue, bytes, "happy-tree.png");
+            // x_layer.attach_text(&ui, "Layer test");
 
-            x_layer.attach_text(&ui, "Layer test");
-
-            x_layer.render(&self.device, &self.queue);
+            // x_layer.render(&ui);
 
             window.end();
         };
+
+        {
+
+            let size = [400 as f32, 600 as f32];
+
+            let window = ui.window("Hello world");
+
+            window
+                .size([400.0, 600.0], Condition::FirstUseEver)
+                .build(|| {
+
+                    ui.text("Hello textures!");
+
+                    ui.text("Say hello to happy-tree.png");
+
+                    let happy_bytes = include_bytes!("happy-tree.png");
+
+                    let happy_texture = texture::Texture::imgui_texture_from_image(
+                        &self.device,
+                        &self.queue,
+                        &self.renderer,
+                        happy_bytes,
+                        image::ImageFormat::Png,
+                    );
+
+                    let happy_texture_id = self.renderer.textures.insert(happy_texture.1);
+
+                    Image::new(happy_texture_id, size).build(ui);
+                });
+        }
 
         if self.last_cursor != ui.mouse_cursor() {
 

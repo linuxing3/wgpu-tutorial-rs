@@ -10,6 +10,8 @@ mod texture;
 
 extern crate imgui_winit_support;
 
+use __core::borrow::BorrowMut;
+use layer::Layer;
 use std::time::Instant;
 use winit::{
     dpi::LogicalSize,
@@ -324,6 +326,9 @@ struct State {
     renderer : Renderer,
     platform : imgui_winit_support::WinitPlatform,
     demo_open : bool,
+
+    // layers
+    layers : Vec<Layer>,
 }
 
 impl State {
@@ -616,6 +621,8 @@ impl State {
 
         let last_cursor = None;
 
+        let layers = vec![];
+
         Self {
             window,
             surface,
@@ -641,6 +648,7 @@ impl State {
             last_frame,
             demo_open : true,
             last_cursor,
+            layers,
         }
     }
 
@@ -706,51 +714,58 @@ impl State {
 
         let ui = self.imgui_context.frame();
 
-        if let Some(window) = ui
-            .window("Layer Example Window")
-            .size([100.0, 50.0], imgui::Condition::FirstUseEver)
-            .begin()
-        {
+        // layers
 
-            let happy_bytes = include_bytes!("happy-tree.png");
+        let happy_bytes = include_bytes!("happy-tree.png");
 
-            let mut x_layer =
-                layer::Layer::new(&self.device, &self.queue, &mut self.renderer, happy_bytes);
+        let x_layer = layer::Layer::new(&self.device, &self.queue, &mut self.renderer, happy_bytes);
 
-            x_layer.render(&self.device, &self.queue, &mut self.renderer, &ui);
+        self.layers.push(x_layer);
 
-            window.end();
-        };
+        for layer in self.layers.iter() {
 
-        {
+            if let Some(window) = ui
+                .window("Layer Example Window")
+                .size([100.0, 50.0], imgui::Condition::FirstUseEver)
+                .begin()
+            {
 
-            let size = [400 as f32, 600 as f32];
+                // layer.render(&self.device, &self.queue, &mut self.renderer, &ui);
 
-            let window = ui.window("Hello world");
-
-            window
-                .size([400.0, 600.0], Condition::FirstUseEver)
-                .build(|| {
-
-                    ui.text("Hello textures!");
-
-                    ui.text("Say hello to happy-tree.png");
-
-                    let happy_bytes = include_bytes!("happy-tree.png");
-
-                    let happy_texture = texture::Texture::imgui_texture_from_image(
-                        &self.device,
-                        &self.queue,
-                        &self.renderer,
-                        happy_bytes,
-                        image::ImageFormat::Png,
-                    );
-
-                    let happy_texture_id = self.renderer.textures.insert(happy_texture.1);
-
-                    Image::new(happy_texture_id, size).build(ui);
-                });
+                window.end();
+            };
         }
+
+        // {
+        //
+        //     let size = [400 as f32, 600 as f32];
+        //
+        //     let window = ui.window("Hello world");
+        //
+        //     window
+        //         .size([400.0, 600.0], Condition::FirstUseEver)
+        //         .build(|| {
+        //
+        //             ui.text("Hello textures!");
+        //
+        //             ui.text("Say hello to happy-tree.png");
+        //
+        //             let happy_bytes = include_bytes!("happy-tree.png");
+        //
+        //             let happy_texture = texture::Texture::imgui_texture_from_image(
+        //                 &self.device,
+        //                 &self.queue,
+        //                 &self.renderer,
+        //                 happy_bytes,
+        //                 image::ImageFormat::Png,
+        //             );
+        //
+        //             let happy_texture_id =
+        // self.renderer.textures.insert(happy_texture.1);
+        //
+        //             Image::new(happy_texture_id, size).build(ui);
+        //         });
+        // }
 
         if self.last_cursor != ui.mouse_cursor() {
 

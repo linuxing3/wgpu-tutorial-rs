@@ -31,15 +31,7 @@ impl Layer {
 
     pub fn attach_text(&mut self, ui : &imgui::Ui, text : &str) { ui.text(text); }
 
-    pub fn on_dettach(&mut self) {
-
-        unimplemented!();
-    }
-
-    pub fn update() {
-
-        unimplemented!();
-    }
+    pub fn update(&mut self) { self.renderer.update(); }
 
     pub fn render(
         &mut self,

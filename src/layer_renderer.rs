@@ -97,15 +97,7 @@ impl LayerRenderer {
         self.texture_id = renderer.textures.insert(texture);
     }
 
-    pub fn resize(&mut self, width : u32, height : u32) {
-
-        if self.width != width || self.height != height {
-
-            self.width = width;
-
-            self.height = height;
-        }
-    }
+    pub fn update(&mut self) {}
 
     fn convert_color(color : wgpu::Color) -> u8 {
 

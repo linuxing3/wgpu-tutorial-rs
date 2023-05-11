@@ -31,7 +31,7 @@ impl Layer {
 
     pub fn attach_text(&mut self, ui : &imgui::Ui, text : &str) { ui.text(text); }
 
-    pub fn update(&mut self) { self.renderer.update(); }
+    pub fn update(&mut self, width : f32, height : f32) { self.renderer.update(width, height); }
 
     pub fn render(
         &mut self,

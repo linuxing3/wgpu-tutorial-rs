@@ -2,20 +2,19 @@ use crate::texture::*;
 use image::*;
 
 pub struct LayerRenderer {
-    pub texture_id : imgui::TextureId,
-    pub data : RgbaImage,
-    pub height : u32,
-    pub width : u32,
+    pub texture_id: imgui::TextureId,
+    pub data: RgbaImage,
+    pub height: u32,
+    pub width: u32,
 }
 
 impl LayerRenderer {
     pub fn new(
-        device : &wgpu::Device,
-        queue : &wgpu::Queue,
-        renderer : &mut imgui_wgpu::Renderer,
-        bytes : &[u8],
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        renderer: &mut imgui_wgpu::Renderer,
+        bytes: &[u8],
     ) -> LayerRenderer {
-
         let (image, size) = Texture::imgui_image_from_raw(bytes);
 
         let texture = Texture::imgui_texture_from_raw(device, queue, renderer, &image, size);
@@ -24,16 +23,23 @@ impl LayerRenderer {
 
         LayerRenderer {
             texture_id,
-            data : image.to_rgba8(),
-            height : size.height,
-            width : size.width,
+            data: image.to_rgba8(),
+            height: size.height,
+            width: size.width,
         }
     }
 
-    pub fn render(&mut self, ui : &imgui::Ui) { self.push_to_command_list(ui); }
+    pub fn render(
+        &mut self,
+        ui: &imgui::Ui,
+    ) {
+        self.push_to_command_list(ui);
+    }
 
-    pub fn push_to_command_list(&mut self, ui : &imgui::Ui) {
-
+    pub fn push_to_command_list(
+        &mut self,
+        ui: &imgui::Ui,
+    ) {
         ui.invisible_button("Smooth Button", [self.height as f32, self.height as f32]);
 
         let draw_list = ui.get_window_draw_list();
@@ -56,24 +62,19 @@ impl LayerRenderer {
 
     pub fn set_data(
         &mut self,
-        device : &wgpu::Device,
-        queue : &wgpu::Queue,
-        renderer : &mut imgui_wgpu::Renderer,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        renderer: &mut imgui_wgpu::Renderer,
     ) {
-
         let (width, height) = (self.width, self.height);
 
         for y in height / 4..height * 3 / 4 {
-
             for x in width / 4..width * 3 / 4 {
-
                 let color = Self::per_pixel(x as u32, y as u32);
 
                 self.data.put_pixel(x, y, color);
             }
         }
-
-        // BUG: rgbaImage -> [u8]
 
         let raw_data = self.data.clone().into_raw();
 
@@ -85,8 +86,8 @@ impl LayerRenderer {
 
         let texture_config = imgui_wgpu::TextureConfig {
             size,
-            label : Some("raw texture"),
-            format : Some(wgpu::TextureFormat::Rgba8Unorm),
+            label: Some("raw texture"),
+            format: Some(wgpu::TextureFormat::Rgba8Unorm),
             ..Default::default()
         };
 
@@ -97,10 +98,20 @@ impl LayerRenderer {
         self.texture_id = renderer.textures.insert(texture);
     }
 
-    pub fn update(&mut self) {}
+    pub fn update(
+        &mut self,
+        width: f32,
+        height: f32,
+    ) {
 
-    fn convert_color(color : wgpu::Color) -> u8 {
+        // if self.data.width() != width | self.data.height() != height {
+        //
+        //
+        //
+        // }
+    }
 
+    fn convert_color(color: wgpu::Color) -> u8 {
         let r = color.r as u8;
 
         let g = color.g as u8;
@@ -114,5 +125,10 @@ impl LayerRenderer {
         color1
     }
 
-    pub fn per_pixel(x : u32, y : u32) -> image::Rgba<u8> { image::Rgba([155, 155, 155, 1]) }
+    pub fn per_pixel(
+        x: u32,
+        y: u32,
+    ) -> image::Rgba<u8> {
+        image::Rgba([155, 155, 155, 1])
+    }
 }

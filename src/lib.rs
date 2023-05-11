@@ -542,7 +542,7 @@ impl State {
             ..Default::default()
         };
 
-        let renderer = Renderer::new(&mut imgui_context, &device, &queue, renderer_config);
+        let mut renderer = Renderer::new(&mut imgui_context, &device, &queue, renderer_config);
 
         let last_frame = Instant::now();
 
@@ -621,7 +621,15 @@ impl State {
 
         let last_cursor = None;
 
-        let layers = vec![];
+        // NOTE: prepare imgui layers
+
+        let mut layers = vec![];
+
+        let happy_bytes = include_bytes!("happy-tree.png");
+
+        let x_layer = layer::Layer::new(&device, &queue, &mut renderer, happy_bytes);
+
+        layers.push(x_layer);
 
         Self {
             window,
@@ -714,23 +722,24 @@ impl State {
 
         let ui = self.imgui_context.frame();
 
-        // layers
+        // NOTE: render imgui layers
 
-        let happy_bytes = include_bytes!("happy-tree.png");
+        let width = self.window.inner_size().width;
 
-        let x_layer = layer::Layer::new(&self.device, &self.queue, &mut self.renderer, happy_bytes);
+        let height = self.window.inner_size().height;
 
-        self.layers.push(x_layer);
-
-        for layer in self.layers.iter() {
+        for layer in &mut self.layers {
 
             if let Some(window) = ui
-                .window("Layer Example Window")
-                .size([100.0, 50.0], imgui::Condition::FirstUseEver)
+                .window("Gallery")
+                .size(
+                    [width as f32, height as f32],
+                    imgui::Condition::FirstUseEver,
+                )
                 .begin()
             {
 
-                // layer.render(&self.device, &self.queue, &mut self.renderer, &ui);
+                layer.render(&self.device, &self.queue, &mut self.renderer, &ui);
 
                 window.end();
             };

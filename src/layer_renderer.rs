@@ -63,9 +63,9 @@ impl LayerRenderer {
 
         let (width, height) = (self.width, self.height);
 
-        for y in 0..height {
+        for y in height / 4..height * 3 / 4 {
 
-            for x in 0..width {
+            for x in width / 4..width * 3 / 4 {
 
                 let color = Self::per_pixel(x as u32, y as u32);
 
@@ -122,5 +122,5 @@ impl LayerRenderer {
         color1
     }
 
-    pub fn per_pixel(x : u32, y : u32) -> image::Rgba<u8> { image::Rgba([255, 0, 0, 0]) }
+    pub fn per_pixel(x : u32, y : u32) -> image::Rgba<u8> { image::Rgba([155, 155, 155, 1]) }
 }

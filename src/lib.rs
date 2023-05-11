@@ -24,6 +24,271 @@ use imgui_wgpu::{Renderer, RendererConfig};
 
 use wgpu::util::DeviceExt;
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+
+struct VertexBasic {
+    position : [f32; 3],
+    color : [f32; 3],
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+
+struct Vertex {
+    position : [f32; 3],
+    tex_coords : [f32; 2], // NEW!
+}
+
+impl Vertex {
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+
+        const ATTRIBS : [wgpu::VertexAttribute; 2] =
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
+
+        wgpu::VertexBufferLayout {
+            array_stride : std::mem::size_of::<Self>() as wgpu::BufferAddress,
+            step_mode : wgpu::VertexStepMode::Vertex,
+            attributes : &ATTRIBS,
+            // attributes : &[
+            //     wgpu::VertexAttribute {
+            //         offset : 0,
+            //         shader_location : 0,
+            //         format : wgpu::VertexFormat::Float32x3,
+            //     },
+            //     wgpu::VertexAttribute {
+            //         offset : std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+            //         shader_location : 1,
+            //         format : wgpu::VertexFormat::Float32x3,
+            //     },
+            // ],
+        }
+    }
+}
+
+const VERTICES : &[Vertex] = &[
+    // Changed
+    Vertex {
+        position : [-0.0868241, 0.49240386, 0.0],
+        tex_coords : [0.4131759, 0.00759614],
+    }, // A
+    Vertex {
+        position : [-0.49513406, 0.06958647, 0.0],
+        tex_coords : [0.0048659444, 0.43041354],
+    }, // B
+    Vertex {
+        position : [-0.21918549, -0.44939706, 0.0],
+        tex_coords : [0.28081453, 0.949397],
+    }, // C
+    Vertex {
+        position : [0.35966998, -0.3473291, 0.0],
+        tex_coords : [0.85967, 0.84732914],
+    }, // D
+    Vertex {
+        position : [0.44147372, 0.2347359, 0.0],
+        tex_coords : [0.9414737, 0.2652641],
+    }, // E
+];
+
+const INDICES : &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+
+// const VERTICES : &[Vertex] = &[
+//     Vertex {
+//         position : [0.0, 0.5, 0.0],
+//         color : [1.0, 0.0, 0.0],
+//     },
+//     Vertex {
+//         position : [-0.5, -0.5, 0.0],
+//         color : [0.0, 1.0, 0.0],
+//     },
+//     Vertex {
+//         position : [0.5, -0.5, 0.0],
+//         color : [0.0, 0.0, 1.0],
+//     },
+// ];
+
+// NOTE: https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
+
+#[rustfmt::skip]
+pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
+    1.0, 0.0, 0.0, 0.0,
+    0.0, 1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.0,
+    0.0, 0.0, 0.5, 1.0,
+);
+
+pub struct Camera {
+    eye : cgmath::Point3<f32>,
+    target : cgmath::Point3<f32>,
+    up : cgmath::Vector3<f32>,
+    aspect : f32,
+    fovy : f32,
+    znear : f32,
+    zfar : f32,
+}
+
+impl Camera {
+    pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
+
+        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
+
+        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
+
+        proj * view
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+
+pub struct CameraUniform {
+    view_proj : [[f32; 4]; 4],
+}
+
+impl CameraUniform {
+    pub fn new() -> Self {
+
+        use cgmath::SquareMatrix;
+
+        Self {
+            view_proj : cgmath::Matrix4::identity().into(),
+        }
+    }
+
+    pub fn update_view_proj(&mut self, camera : &Camera) {
+
+        self.view_proj = (OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix()).into();
+    }
+}
+
+pub struct CameraController {
+    speed : f32,
+    is_up_pressed : bool,
+    is_down_pressed : bool,
+    is_forward_pressed : bool,
+    is_backward_pressed : bool,
+    is_left_pressed : bool,
+    is_right_pressed : bool,
+}
+
+impl CameraController {
+    pub fn new(speed : f32) -> Self {
+
+        Self {
+            speed,
+            is_up_pressed : false,
+            is_down_pressed : false,
+            is_forward_pressed : false,
+            is_backward_pressed : false,
+            is_left_pressed : false,
+            is_right_pressed : false,
+        }
+    }
+
+    pub fn process_events(&mut self, event : &WindowEvent) -> bool {
+
+        match event {
+            WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(keycode),
+                        ..
+                    },
+                ..
+            } => {
+
+                let is_pressed = *state == ElementState::Pressed;
+
+                match keycode {
+                    VirtualKeyCode::Space => {
+
+                        self.is_up_pressed = is_pressed;
+
+                        true
+                    }
+                    VirtualKeyCode::LShift => {
+
+                        self.is_down_pressed = is_pressed;
+
+                        true
+                    }
+                    VirtualKeyCode::W | VirtualKeyCode::Up => {
+
+                        self.is_forward_pressed = is_pressed;
+
+                        true
+                    }
+                    VirtualKeyCode::A | VirtualKeyCode::Left => {
+
+                        self.is_left_pressed = is_pressed;
+
+                        true
+                    }
+                    VirtualKeyCode::S | VirtualKeyCode::Down => {
+
+                        self.is_backward_pressed = is_pressed;
+
+                        true
+                    }
+                    VirtualKeyCode::D | VirtualKeyCode::Right => {
+
+                        self.is_right_pressed = is_pressed;
+
+                        true
+                    }
+                    _ => false,
+                }
+            }
+            _ => false,
+        }
+    }
+
+    pub fn update_camera(&self, camera : &mut Camera) {
+
+        use cgmath::InnerSpace;
+
+        let forward = camera.target - camera.eye;
+
+        let forward_norm = forward.normalize();
+
+        let forward_mag = forward.magnitude();
+
+        // NOTE: z ++ --
+        // Prevents glitching when camera gets too close to the
+        // center of the scene.
+        if self.is_forward_pressed && forward_mag > self.speed {
+
+            camera.eye += forward_norm * self.speed;
+        }
+
+        if self.is_backward_pressed {
+
+            camera.eye -= forward_norm * self.speed;
+        }
+
+        let right = forward_norm.cross(camera.up);
+
+        // Redo radius calc in case the up/ down is pressed.
+        let forward = camera.target - camera.eye;
+
+        let forward_mag = forward.magnitude();
+
+        if self.is_right_pressed {
+
+            // Rescale the distance between the target and eye so
+            // that it doesn't change. The eye therefore still
+            // lies on the circle made by the target and eye.
+            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
+        }
+
+        if self.is_left_pressed {
+
+            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
+        }
+    }
+}
+
 struct State {
     surface : wgpu::Surface,
     device : wgpu::Device,
@@ -277,13 +542,14 @@ impl State {
         let last_frame = Instant::now();
 
         // NOTE: Normal triangle render stuff
+
         // render_pipeline
         let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label : Some("Render Pipeline Layout"),
-                bind_group_layouts : &[&texture_bind_group_layout, &camera_bind_group_layout], // FIXME:
+                bind_group_layouts : &[&texture_bind_group_layout, &camera_bind_group_layout], // NOTE:
                 push_constant_ranges : &[],
             });
 
@@ -327,7 +593,8 @@ impl State {
             multiview : None, // 5.
         });
 
-        // vertex buffer
+        // NOTE: vertex buffer
+
         let vertex_buffer_desc = &wgpu::util::BufferInitDescriptor {
             label : Some("Vertex Buffer"),
             contents : bytemuck::cast_slice(VERTICES),
@@ -431,7 +698,7 @@ impl State {
 
         self.last_frame = now;
 
-        let frame = self.surface.get_current_texture()?;
+        let main_frame = self.surface.get_current_texture()?;
 
         self.platform
             .prepare_frame(io, &self.window)
@@ -492,7 +759,7 @@ impl State {
             self.platform.prepare_render(ui, &self.window);
         }
 
-        let view = frame
+        let main_view = main_frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -508,7 +775,7 @@ impl State {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label : Some("Render Pass"),
                 color_attachments : &[Some(wgpu::RenderPassColorAttachment {
-                    view : &view,
+                    view : &main_view,
                     resolve_target : None,
                     ops : wgpu::Operations {
                         load : wgpu::LoadOp::Clear(self.clear_color),
@@ -518,17 +785,21 @@ impl State {
                 depth_stencil_attachment : None,
             });
 
+            // NOTE: bindings
+
             render_pass.set_pipeline(&self.render_pipeline); // 2.
 
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]); // NEW!
+            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]); // NOTE: texture with pipeline
 
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.camera_bind_group, &[]); // NOTE: camera with 3D effect
 
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..)); //NOTE: vertex cached with uniform 3d effect
 
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16); // NOTE: index cached
 
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.
+            // NOTE: draw shapes on background surface
+
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.NOTE: more parameter than draw method
 
             // NOTE: render imgui
 
@@ -544,279 +815,16 @@ impl State {
             drop(render_pass);
         }
 
-        // submit will accept anything that implements IntoIter
+        // NOTE: submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
 
-        frame.present();
+        main_frame.present();
 
         Ok(())
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-
-struct VertexBasic {
-    position : [f32; 3],
-    color : [f32; 3],
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-
-struct Vertex {
-    position : [f32; 3],
-    tex_coords : [f32; 2], // NEW!
-}
-
-impl Vertex {
-    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
-
-        const ATTRIBS : [wgpu::VertexAttribute; 2] =
-            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
-
-        wgpu::VertexBufferLayout {
-            array_stride : std::mem::size_of::<Self>() as wgpu::BufferAddress,
-            step_mode : wgpu::VertexStepMode::Vertex,
-            attributes : &ATTRIBS,
-            // attributes : &[
-            //     wgpu::VertexAttribute {
-            //         offset : 0,
-            //         shader_location : 0,
-            //         format : wgpu::VertexFormat::Float32x3,
-            //     },
-            //     wgpu::VertexAttribute {
-            //         offset : std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-            //         shader_location : 1,
-            //         format : wgpu::VertexFormat::Float32x3,
-            //     },
-            // ],
-        }
-    }
-}
-
-const VERTICES : &[Vertex] = &[
-    // Changed
-    Vertex {
-        position : [-0.0868241, 0.49240386, 0.0],
-        tex_coords : [0.4131759, 0.00759614],
-    }, // A
-    Vertex {
-        position : [-0.49513406, 0.06958647, 0.0],
-        tex_coords : [0.0048659444, 0.43041354],
-    }, // B
-    Vertex {
-        position : [-0.21918549, -0.44939706, 0.0],
-        tex_coords : [0.28081453, 0.949397],
-    }, // C
-    Vertex {
-        position : [0.35966998, -0.3473291, 0.0],
-        tex_coords : [0.85967, 0.84732914],
-    }, // D
-    Vertex {
-        position : [0.44147372, 0.2347359, 0.0],
-        tex_coords : [0.9414737, 0.2652641],
-    }, // E
-];
-
-const INDICES : &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
-
-// const VERTICES : &[Vertex] = &[
-//     Vertex {
-//         position : [0.0, 0.5, 0.0],
-//         color : [1.0, 0.0, 0.0],
-//     },
-//     Vertex {
-//         position : [-0.5, -0.5, 0.0],
-//         color : [0.0, 1.0, 0.0],
-//     },
-//     Vertex {
-//         position : [0.5, -0.5, 0.0],
-//         color : [0.0, 0.0, 1.0],
-//     },
-// ];
-
-// NOTE: https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
-
-#[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.5, 0.0,
-    0.0, 0.0, 0.5, 1.0,
-);
-
-pub struct Camera {
-    eye : cgmath::Point3<f32>,
-    target : cgmath::Point3<f32>,
-    up : cgmath::Vector3<f32>,
-    aspect : f32,
-    fovy : f32,
-    znear : f32,
-    zfar : f32,
-}
-
-impl Camera {
-    pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
-
-        let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
-
-        let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
-
-        proj * view
-    }
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-
-pub struct CameraUniform {
-    view_proj : [[f32; 4]; 4],
-}
-
-impl CameraUniform {
-    pub fn new() -> Self {
-
-        use cgmath::SquareMatrix;
-
-        Self {
-            view_proj : cgmath::Matrix4::identity().into(),
-        }
-    }
-
-    pub fn update_view_proj(&mut self, camera : &Camera) {
-
-        self.view_proj = (OPENGL_TO_WGPU_MATRIX * camera.build_view_projection_matrix()).into();
-    }
-}
-
-pub struct CameraController {
-    speed : f32,
-    is_up_pressed : bool,
-    is_down_pressed : bool,
-    is_forward_pressed : bool,
-    is_backward_pressed : bool,
-    is_left_pressed : bool,
-    is_right_pressed : bool,
-}
-
-impl CameraController {
-    pub fn new(speed : f32) -> Self {
-
-        Self {
-            speed,
-            is_up_pressed : false,
-            is_down_pressed : false,
-            is_forward_pressed : false,
-            is_backward_pressed : false,
-            is_left_pressed : false,
-            is_right_pressed : false,
-        }
-    }
-
-    pub fn process_events(&mut self, event : &WindowEvent) -> bool {
-
-        match event {
-            WindowEvent::KeyboardInput {
-                input:
-                    KeyboardInput {
-                        state,
-                        virtual_keycode: Some(keycode),
-                        ..
-                    },
-                ..
-            } => {
-
-                let is_pressed = *state == ElementState::Pressed;
-
-                match keycode {
-                    VirtualKeyCode::Space => {
-
-                        self.is_up_pressed = is_pressed;
-
-                        true
-                    }
-                    VirtualKeyCode::LShift => {
-
-                        self.is_down_pressed = is_pressed;
-
-                        true
-                    }
-                    VirtualKeyCode::W | VirtualKeyCode::Up => {
-
-                        self.is_forward_pressed = is_pressed;
-
-                        true
-                    }
-                    VirtualKeyCode::A | VirtualKeyCode::Left => {
-
-                        self.is_left_pressed = is_pressed;
-
-                        true
-                    }
-                    VirtualKeyCode::S | VirtualKeyCode::Down => {
-
-                        self.is_backward_pressed = is_pressed;
-
-                        true
-                    }
-                    VirtualKeyCode::D | VirtualKeyCode::Right => {
-
-                        self.is_right_pressed = is_pressed;
-
-                        true
-                    }
-                    _ => false,
-                }
-            }
-            _ => false,
-        }
-    }
-
-    pub fn update_camera(&self, camera : &mut Camera) {
-
-        use cgmath::InnerSpace;
-
-        let forward = camera.target - camera.eye;
-
-        let forward_norm = forward.normalize();
-
-        let forward_mag = forward.magnitude();
-
-        // Prevents glitching when camera gets too close to the
-        // center of the scene.
-        if self.is_forward_pressed && forward_mag > self.speed {
-
-            camera.eye += forward_norm * self.speed;
-        }
-
-        if self.is_backward_pressed {
-
-            camera.eye -= forward_norm * self.speed;
-        }
-
-        let right = forward_norm.cross(camera.up);
-
-        // Redo radius calc in case the up/ down is pressed.
-        let forward = camera.target - camera.eye;
-
-        let forward_mag = forward.magnitude();
-
-        if self.is_right_pressed {
-
-            // Rescale the distance between the target and eye so
-            // that it doesn't change. The eye therefore still
-            // lies on the circle made by the target and eye.
-            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
-        }
-
-        if self.is_left_pressed {
-
-            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
-        }
-    }
-}
-
+// run entry
 pub async fn run() {
 
     env_logger::init();
@@ -839,6 +847,7 @@ pub async fn run() {
 
                 state.update();
 
+                // render entry
                 match state.render() {
                     Ok(_) => {}
                     // Reconfigure the surface if lost

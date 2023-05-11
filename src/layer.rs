@@ -12,9 +12,14 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn new(id : imgui::TextureId) -> Layer {
+    pub fn new(
+        device : &wgpu::Device,
+        queue : &wgpu::Queue,
+        renderer : &mut imgui_wgpu::Renderer,
+        bytes : &[u8],
+    ) -> Layer {
 
-        let renderer = LayerRenderer::new(id);
+        let renderer = LayerRenderer::new(&device, &queue, renderer, bytes);
 
         let last_frame = Instant::now();
 
@@ -36,12 +41,22 @@ impl Layer {
         unimplemented!();
     }
 
-    pub fn render(&mut self, ui : &imgui::Ui) {
+    pub fn render(
+        &mut self,
+        _device : &wgpu::Device,
+        _queue : &wgpu::Queue,
+        _renderer : &mut imgui_wgpu::Renderer,
+        ui : &imgui::Ui,
+    ) {
 
         let now = Instant::now();
 
         self.last_frame = now;
 
+        self.renderer.set_data(_device, _queue, _renderer);
+
         self.renderer.render(ui);
     }
+
+    pub fn renderer(&self) -> &LayerRenderer { &self.renderer }
 }

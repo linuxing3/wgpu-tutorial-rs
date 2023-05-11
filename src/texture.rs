@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use anyhow::*;
-use image::GenericImageView;
+use image::{GenericImageView, RgbaImage};
 use imgui_wgpu::TextureConfig;
 
 pub struct Texture {
@@ -7,6 +9,11 @@ pub struct Texture {
     pub view : wgpu::TextureView,
     pub sampler : wgpu::Sampler,
 }
+
+// impl Copy for image::DynamicImage {
+//     // add code here
+//     fn clone(&mut self) -> image::DynamicImage {}
+// }
 
 impl Texture {
     pub fn from_bytes(
@@ -19,6 +26,47 @@ impl Texture {
         let img = image::load_from_memory(bytes)?;
 
         Self::from_image(device, queue, &img, Some(label))
+    }
+
+    pub fn imgui_image_from_raw<'a>(bytes : &'a [u8]) -> (image::DynamicImage, wgpu::Extent3d) {
+
+        let image = image::load_from_memory(bytes).expect("load from raw failed!");
+
+        let (width, height) = image.dimensions();
+
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            ..Default::default()
+        };
+
+        (image, size)
+    }
+
+    pub fn imgui_texture_from_raw<'a>(
+        device : &'a wgpu::Device,
+        queue : &'a wgpu::Queue,
+        renderer : &'a imgui_wgpu::Renderer,
+        image : &image::DynamicImage,
+        size : wgpu::Extent3d,
+    ) -> imgui_wgpu::Texture {
+
+        let rgba = image.to_rgba8();
+
+        let raw_data = rgba.into_raw();
+
+        let texture_config = imgui_wgpu::TextureConfig {
+            size,
+            label : Some("raw texture"),
+            format : Some(wgpu::TextureFormat::Rgba8Unorm),
+            ..Default::default()
+        };
+
+        let texture = imgui_wgpu::Texture::new(&device, &renderer, texture_config);
+
+        texture.write(&queue, &raw_data, size.width, size.height);
+
+        texture
     }
 
     pub fn imgui_texture_from_image(
@@ -47,7 +95,7 @@ impl Texture {
 
         let texture_config = imgui_wgpu::TextureConfig {
             size,
-            label : Some("lenna texture"),
+            label : Some("image texture"),
             format : Some(wgpu::TextureFormat::Rgba8Unorm),
             ..Default::default()
         };

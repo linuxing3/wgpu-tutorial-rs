@@ -272,7 +272,7 @@ impl State {
             ..Default::default()
         };
 
-        let mut renderer = Renderer::new(&mut imgui_context, &device, &queue, renderer_config);
+        let renderer = Renderer::new(&mut imgui_context, &device, &queue, renderer_config);
 
         let last_frame = Instant::now();
 
@@ -445,11 +445,12 @@ impl State {
             .begin()
         {
 
-            // let mut x_layer = layer::Layer::new(happy_texture_id);
+            let happy_bytes = include_bytes!("happy-tree.png");
 
-            // x_layer.attach_text(&ui, "Layer test");
+            let mut x_layer =
+                layer::Layer::new(&self.device, &self.queue, &mut self.renderer, happy_bytes);
 
-            // x_layer.render(&ui);
+            x_layer.render(&self.device, &self.queue, &mut self.renderer, &ui);
 
             window.end();
         };

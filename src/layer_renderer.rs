@@ -1,46 +1,40 @@
-use imgui::*;
-
-use crate::texture;
-use image::ImageFormat;
-use imgui::*;
-use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
-use std::time::Instant;
-use wgpu::Extent3d;
+use crate::texture::*;
+use image::*;
 
 pub struct LayerRenderer {
     pub texture_id : imgui::TextureId,
-    pub image : imgui::Image,
-    pub data : Vec<u8>,
+    pub data : RgbaImage,
     pub height : u32,
     pub width : u32,
 }
 
 impl LayerRenderer {
-    pub fn new(texture_id : imgui::TextureId) -> Self {
+    pub fn new(
+        device : &wgpu::Device,
+        queue : &wgpu::Queue,
+        renderer : &mut imgui_wgpu::Renderer,
+        bytes : &[u8],
+    ) -> LayerRenderer {
 
-        let data : Vec<u8> = Vec::with_capacity(0);
+        let (image, size) = Texture::imgui_image_from_raw(bytes);
 
-        let image = imgui::Image::new(texture_id, [0.0, 0.0]);
+        let texture = Texture::imgui_texture_from_raw(device, queue, renderer, &image, size);
+
+        let texture_id = renderer.textures.insert(texture);
 
         LayerRenderer {
             texture_id,
-            image,
-            data,
-            height : 0,
-            width : 0,
+            data : image.to_rgba8(),
+            height : size.height,
+            width : size.width,
         }
     }
 
-    pub fn render(&mut self, ui : &imgui::Ui) {
+    pub fn render(&mut self, ui : &imgui::Ui) { self.push_to_command_list(ui); }
 
-        // Self::allocate_memory(self, ui);
+    pub fn push_to_command_list(&mut self, ui : &imgui::Ui) {
 
-        Self::set_data(self);
-    }
-
-    pub fn allocate_memory(&mut self, ui : &imgui::Ui) {
-
-        ui.invisible_button("Smooth Button", [100.0, 100.0]);
+        ui.invisible_button("Smooth Button", [self.height as f32, self.height as f32]);
 
         let draw_list = ui.get_window_draw_list();
 
@@ -60,40 +54,47 @@ impl LayerRenderer {
             .build();
     }
 
-    pub fn set_data(&mut self) {
+    pub fn set_data(
+        &mut self,
+        device : &wgpu::Device,
+        queue : &wgpu::Queue,
+        renderer : &mut imgui_wgpu::Renderer,
+    ) {
 
-        let len = self.width as usize * self.height as usize;
+        let (width, height) = (self.width, self.height);
 
-        for y in 0..self.height as usize {
+        for y in 0..height {
 
-            for x in 0..self.width as usize {
+            for x in 0..width {
 
                 let color = Self::per_pixel(x as u32, y as u32);
 
-                let index = x + y * self.width as usize;
-
-                if index < len {
-
-                    self.data[index] = Self::convert_color(color);
-                }
+                self.data.put_pixel(x, y, color);
             }
         }
 
-        // for y in 0..self.height {
-        //
-        //     for x in 0..self.width {
-        //
-        //         // Insert RGB values
-        //         data.push(y as u8);
-        //
-        //         data.push(x as u8);
-        //
-        //         data.push((y + x) as u8);
-        //
-        //         data.push(1.0 as u8);
-        //     }
-        // }
-        // self.data = data.to_vec();
+        // BUG: rgbaImage -> [u8]
+
+        let raw_data = self.data.clone().into_raw();
+
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            ..Default::default()
+        };
+
+        let texture_config = imgui_wgpu::TextureConfig {
+            size,
+            label : Some("raw texture"),
+            format : Some(wgpu::TextureFormat::Rgba8Unorm),
+            ..Default::default()
+        };
+
+        let texture = imgui_wgpu::Texture::new(&device, &renderer, texture_config);
+
+        texture.write(&queue, &raw_data, width, height);
+
+        self.texture_id = renderer.textures.insert(texture);
     }
 
     pub fn resize(&mut self, width : u32, height : u32) {
@@ -121,13 +122,5 @@ impl LayerRenderer {
         color1
     }
 
-    pub fn per_pixel(x : u32, y : u32) -> wgpu::Color {
-
-        wgpu::Color {
-            r : 0.0,
-            g : 0.1,
-            b : 0.2,
-            a : 0.3,
-        }
-    }
+    pub fn per_pixel(x : u32, y : u32) -> image::Rgba<u8> { image::Rgba([255, 0, 0, 0]) }
 }

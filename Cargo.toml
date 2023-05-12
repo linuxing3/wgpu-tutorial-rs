@@ -39,3 +39,10 @@ features = ["png", "jpeg"]
 #     "Window",
 #     "Element",
 # ]}
+
+# [[bin]]
+# name = "cube"
+# path = "examples/cube.rs"
+# [[bin]]
+# name = "custom-texture"
+# path = "examples/custom-texture.rs"

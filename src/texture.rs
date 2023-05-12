@@ -2,6 +2,12 @@ use anyhow::*;
 use image::{DynamicImage, GenericImageView, RgbaImage};
 use imgui_wgpu::TextureConfig;
 
+pub struct Context<'a> {
+    pub device: &'a wgpu::Device,
+    pub queue: &'a wgpu::Queue,
+    pub renderer: &'a mut imgui_wgpu::Renderer, // NOTE: must be mutable
+}
+
 pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
@@ -15,14 +21,13 @@ pub struct Texture {
 
 impl Texture {
     pub fn from_bytes(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
         bytes: &[u8],
+        context: &Context,
         label: &str,
     ) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
 
-        Self::from_image(device, queue, &img, Some(label))
+        Self::from_image(context, &img, Some(label))
     }
 
     fn resize_image(
@@ -52,9 +57,7 @@ impl Texture {
     }
 
     pub fn imgui_texture_from_raw<'a>(
-        device: &'a wgpu::Device,
-        queue: &'a wgpu::Queue,
-        renderer: &'a imgui_wgpu::Renderer,
+        context: &Context,
         image: &image::DynamicImage,
         size: wgpu::Extent3d,
     ) -> imgui_wgpu::Texture {
@@ -69,17 +72,15 @@ impl Texture {
             ..Default::default()
         };
 
-        let texture = imgui_wgpu::Texture::new(&device, &renderer, texture_config);
+        let texture = imgui_wgpu::Texture::new(context.device, context.renderer, texture_config);
 
-        texture.write(&queue, &raw_data, size.width, size.height);
+        texture.write(&context.queue, &raw_data, size.width, size.height);
 
         texture
     }
 
     pub fn imgui_texture_from_image(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        renderer: &imgui_wgpu::Renderer,
+        context: &Context,
         bytes: &[u8],
         format: image::ImageFormat,
     ) -> (Vec<u8>, imgui_wgpu::Texture) {
@@ -106,16 +107,15 @@ impl Texture {
             ..Default::default()
         };
 
-        let texture = imgui_wgpu::Texture::new(&device, &renderer, texture_config);
+        let texture = imgui_wgpu::Texture::new(context.device, context.renderer, texture_config);
 
-        texture.write(&queue, &raw_data, dimensions.0, dimensions.1);
+        texture.write(&context.queue, &raw_data, dimensions.0, dimensions.1);
 
         (raw_data, texture)
     }
 
     pub fn from_image(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        context: &Context,
         img: &image::DynamicImage,
         label: Option<&str>,
     ) -> Result<Self> {
@@ -129,7 +129,7 @@ impl Texture {
             depth_or_array_layers: 1,
         };
 
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let texture = context.device.create_texture(&wgpu::TextureDescriptor {
             label,
             size,
             mip_level_count: 1,
@@ -140,7 +140,7 @@ impl Texture {
             view_formats: &[],
         });
 
-        queue.write_texture(
+        context.queue.write_texture(
             wgpu::ImageCopyTexture {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
@@ -158,7 +158,7 @@ impl Texture {
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        let sampler = context.device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,

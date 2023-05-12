@@ -10,16 +10,24 @@ pub struct LayerRenderer {
 
 impl LayerRenderer {
     pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        renderer: &mut imgui_wgpu::Renderer,
+        context: &mut Context,
         bytes: &[u8],
     ) -> LayerRenderer {
+        if bytes.len() == 0 {
+            let size = wgpu::Extent3d {
+                width: 100,
+                height: 100,
+                ..Default::default()
+            };
+            let image = DynamicImage::new_rgba8(size.width, size.height);
+        }
+
         let (image, size) = Texture::imgui_image_from_raw(bytes);
 
-        let texture = Texture::imgui_texture_from_raw(device, queue, renderer, &image, size);
+        let texture = Texture::imgui_texture_from_raw(context, &image, size);
 
-        let texture_id = renderer.textures.insert(texture);
+        // BUG:
+        let texture_id = context.renderer.textures.insert(texture);
 
         LayerRenderer {
             texture_id,
@@ -62,9 +70,7 @@ impl LayerRenderer {
 
     pub fn set_data(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        renderer: &mut imgui_wgpu::Renderer,
+        context: &mut Context,
     ) {
         let (width, height) = (self.width, self.height);
 
@@ -91,11 +97,11 @@ impl LayerRenderer {
             ..Default::default()
         };
 
-        let texture = imgui_wgpu::Texture::new(&device, &renderer, texture_config);
+        let texture = imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config);
 
-        texture.write(&queue, &raw_data, width, height);
+        texture.write(&context.queue, &raw_data, width, height);
 
-        self.texture_id = renderer.textures.insert(texture);
+        self.texture_id = context.renderer.textures.insert(texture);
     }
 
     pub fn update(

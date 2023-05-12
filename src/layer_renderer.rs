@@ -15,25 +15,35 @@ impl LayerRenderer {
     ) -> LayerRenderer {
         if bytes.len() == 0 {
             let size = wgpu::Extent3d {
-                width: 100,
-                height: 100,
+                width: 800,
+                height: 600,
                 ..Default::default()
             };
             let image = DynamicImage::new_rgba8(size.width, size.height);
-        }
+            let texture = Texture::imgui_texture_from_raw(context, &image, size);
 
-        let (image, size) = Texture::imgui_image_from_raw(bytes);
+            // BUG:
+            let texture_id = context.renderer.textures.insert(texture);
+            return LayerRenderer {
+                texture_id,
+                data: image.to_rgba8(),
+                height: size.height,
+                width: size.width,
+            };
+        } else {
+            let (image, size) = Texture::imgui_image_from_raw(bytes);
 
-        let texture = Texture::imgui_texture_from_raw(context, &image, size);
+            let texture = Texture::imgui_texture_from_raw(context, &image, size);
 
-        // BUG:
-        let texture_id = context.renderer.textures.insert(texture);
+            // BUG:
+            let texture_id = context.renderer.textures.insert(texture);
 
-        LayerRenderer {
-            texture_id,
-            data: image.to_rgba8(),
-            height: size.height,
-            width: size.width,
+            return LayerRenderer {
+                texture_id,
+                data: image.to_rgba8(),
+                height: size.height,
+                width: size.width,
+            };
         }
     }
 

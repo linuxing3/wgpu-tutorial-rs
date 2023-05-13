@@ -1,7 +1,6 @@
 use anyhow::*;
 use image::{DynamicImage, GenericImageView, RgbaImage};
 
-
 pub struct Context<'a> {
     pub device : &'a wgpu::Device,
     pub queue : &'a wgpu::Queue,
@@ -50,13 +49,14 @@ impl Texture {
             view_formats : &[wgpu::TextureFormat::R8Uint],
         });
 
+        //NOTE:
         context.queue.write_texture(
             cube_texture.as_image_copy(),
             &texture_texels,
             wgpu::ImageDataLayout {
                 offset : 0,
                 bytes_per_row : Some(std::num::NonZeroU32::new(texture_size).unwrap()),
-                rows_per_image : None,
+                rows_per_image : None, // NOTE: None for pixels from scratch
             },
             cube_texture_extent,
         );
@@ -145,6 +145,7 @@ impl Texture {
 
         let texture = imgui_wgpu::Texture::new(context.device, context.renderer, texture_config);
 
+        // NOTE: queue.write?
         texture.write(&context.queue, &raw_data, size.width, size.height);
 
         texture
@@ -164,11 +165,11 @@ impl Texture {
         // NOTE: raw data with rgba8 format
         let raw_data = rgba.into_raw();
 
-        let dimensions = image.dimensions();
+        let (width, height) = image.dimensions();
 
         let size = wgpu::Extent3d {
-            width : dimensions.0,
-            height : dimensions.1,
+            width,
+            height,
             ..Default::default()
         };
 
@@ -181,7 +182,7 @@ impl Texture {
 
         let texture = imgui_wgpu::Texture::new(context.device, context.renderer, texture_config);
 
-        texture.write(&context.queue, &raw_data, dimensions.0, dimensions.1);
+        texture.write(&context.queue, &raw_data, width, height);
 
         (raw_data, texture)
     }
@@ -224,7 +225,7 @@ impl Texture {
             wgpu::ImageDataLayout {
                 offset : 0,
                 bytes_per_row : std::num::NonZeroU32::new(4 * dimensions.0),
-                rows_per_image : std::num::NonZeroU32::new(dimensions.1),
+                rows_per_image : std::num::NonZeroU32::new(dimensions.1), // NOTE: None?
             },
             size,
         );
@@ -246,5 +247,27 @@ impl Texture {
             view,
             sampler,
         })
+    }
+}
+
+#[cfg(test)]
+
+mod test {
+
+    use super::*;
+
+    #[test]
+
+    pub fn test_dimension() {
+
+        let bytes = include_bytes!("../assets/images/happy-tree.png");
+
+        let (image, size) = Texture::imgui_image_from_raw(bytes);
+
+        println!("{}", size.height);
+
+        println!("{}", size.width);
+
+        assert!(Some(size.height) != None);
     }
 }

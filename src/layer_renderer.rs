@@ -77,6 +77,11 @@ impl LayerRenderer {
             .build();
     }
 
+    pub fn render2(&mut self, _context : &mut Context, ui : &imgui::Ui, size : Option<[f32; 2]>) {
+
+        imgui::Image::new(self.texture_id, size.unwrap()).build(ui);
+    }
+
     fn convert_color(color : wgpu::Color) -> u8 {
 
         let r = color.r as u8;

@@ -499,15 +499,13 @@ impl State {
 
             let imgui_region_size = layer.renderer.size.unwrap();
 
-            let mut new_imgui_region_size : Option<[f32; 2]> = None;
-
             if let Some(window) = imgui_frame
                 .window("Gallery")
                 .size(imgui_region_size, imgui::Condition::FirstUseEver)
                 .begin()
             {
 
-                new_imgui_region_size = Some(imgui_frame.content_region_avail());
+                let new_imgui_region_size = Some(imgui_frame.content_region_avail());
 
                 layer.render(texture_context, &imgui_frame, new_imgui_region_size);
 

@@ -5,7 +5,6 @@ use wgpu_tutorial_rs::state::State;
 
 use pollster::block_on;
 use winit::{
-    dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,

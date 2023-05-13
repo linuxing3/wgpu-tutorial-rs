@@ -29,7 +29,7 @@ impl Layer {
         size : Option<[f32; 2]>,
     ) {
 
-        self.renderer.render(context, ui, size);
+        self.renderer.render2(context, ui, size);
     }
 
     pub fn renderer(&self) -> &LayerRenderer { &self.renderer }

@@ -92,5 +92,5 @@ impl LayerRenderer {
         color1
     }
 
-    pub fn per_pixel(x : u32, y : u32) -> image::Rgba<u8> { image::Rgba([155, 155, 155, 1]) }
+    pub fn per_pixel(_x : u32, _y : u32) -> image::Rgba<u8> { image::Rgba([155, 155, 155, 1]) }
 }

@@ -497,7 +497,7 @@ impl State {
 
         for layer in &mut self.layers {
 
-            let mut imgui_region_size = layer.renderer.size.unwrap();
+            let imgui_region_size = layer.renderer.size.unwrap();
 
             let mut new_imgui_region_size : Option<[f32; 2]> = None;
 

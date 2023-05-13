@@ -22,15 +22,19 @@ impl Layer {
 
     pub fn render(&mut self, context : &mut texture::Context, ui : &imgui::Ui) {
 
-        let now = Instant::now();
-
-        self.last_frame = now;
-
-        self.renderer.set_data(context);
-
-        self.renderer.resize(context, ui);
+        self.renderer.set_data(context, ui);
 
         self.renderer.render(ui);
+    }
+
+    pub fn resize(
+        &mut self,
+        context : &mut texture::Context,
+        ui : &imgui::Ui,
+        size : Option<[f32; 2]>,
+    ) {
+
+        self.renderer.resize(context, ui, size);
     }
 
     pub fn renderer(&self) -> &LayerRenderer { &self.renderer }

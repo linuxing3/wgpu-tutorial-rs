@@ -20,10 +20,10 @@ pub async fn run() {
 
     let window = WindowBuilder::new().build(&event_loop).unwrap();
 
-    window.set_inner_size(LogicalSize {
-        width : 1280.0,
-        height : 720.0,
-    });
+    // window.set_inner_size(LogicalSize {
+    //     width : 1280.0,
+    //     height : 720.0,
+    // });
 
     let mut state = State::new(window).await;
 

@@ -419,6 +419,23 @@ impl State {
 
             self.surface.configure(&self.device, &self.config);
         }
+
+        // imgui
+
+        // let new_size = imgui_frame.content_region_avail();
+        //
+        // let imgui_frame = self.imgui_context.frame();
+        //
+        // let texture_context = &mut texture::Context {
+        //     device : &self.device,
+        //     queue : &self.queue,
+        //     renderer : &mut self.renderer,
+        // };
+        //
+        // for layer in &mut self.layers {
+        //
+        //     layer.resize(texture_context, &imgui_frame, Some(new_size));
+        // }
     }
 
     pub fn input(&mut self, event : &WindowEvent) -> bool {
@@ -438,6 +455,13 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
+    }
+
+    pub fn imgui_frame(&mut self) -> &mut imgui::Ui {
+
+        let imgui_frame = self.imgui_context.frame();
+
+        imgui_frame
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -465,10 +489,6 @@ impl State {
 
         // NOTE: prepare imgui layers
 
-        let width = self.window.inner_size().width;
-
-        let height = self.window.inner_size().height;
-
         let texture_context = &mut texture::Context {
             device : &self.device,
             queue : &self.queue,
@@ -477,19 +497,33 @@ impl State {
 
         for layer in &mut self.layers {
 
+            let mut imgui_region_size = layer.renderer.size.unwrap();
+
+            let mut new_imgui_region_size : Option<[f32; 2]> = None;
+
             if let Some(window) = imgui_frame
                 .window("Gallery")
-                .size(
-                    [width as f32, height as f32],
-                    imgui::Condition::FirstUseEver,
-                )
+                .size(imgui_region_size, imgui::Condition::FirstUseEver)
                 .begin()
             {
+
+                new_imgui_region_size = Some(imgui_frame.content_region_avail());
 
                 layer.render(texture_context, &imgui_frame);
 
                 window.end();
             };
+
+            if let Some(_size) = new_imgui_region_size {
+
+                // Resize render target, which is optional
+                if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
+
+                    imgui_region_size = _size;
+
+                    layer.resize(texture_context, imgui_frame, Some(imgui_region_size));
+                }
+            }
         }
 
         // NOTE: prepare render

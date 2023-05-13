@@ -4,8 +4,7 @@ use image::*;
 pub struct LayerRenderer {
     pub texture_id : imgui::TextureId,
     pub data : RgbaImage,
-    pub height : u32,
-    pub width : u32,
+    pub size : Option<[f32; 2]>,
 }
 
 impl LayerRenderer {
@@ -14,8 +13,8 @@ impl LayerRenderer {
         if bytes.len() == 0 {
 
             let size = wgpu::Extent3d {
-                width : 800,
-                height : 600,
+                width : 256,
+                height : 256,
                 ..Default::default()
             };
 
@@ -29,8 +28,7 @@ impl LayerRenderer {
             return LayerRenderer {
                 texture_id,
                 data : image.to_rgba8(),
-                height : size.height,
-                width : size.width,
+                size : Some([512.0, 512.0]),
             };
         } else {
 
@@ -44,17 +42,18 @@ impl LayerRenderer {
             return LayerRenderer {
                 texture_id,
                 data : image.to_rgba8(),
-                height : size.height,
-                width : size.width,
+                size : Some([size.width as f32, size.height as f32]),
             };
         }
     }
 
-    pub fn render(&mut self, ui : &imgui::Ui) { self.push_to_command_list(ui); }
+    pub fn render(&mut self, ui : &imgui::Ui) { self.build_image(ui); }
 
-    pub fn push_to_command_list(&mut self, ui : &imgui::Ui) {
+    pub fn build_image(&mut self, ui : &imgui::Ui) {
 
-        ui.invisible_button("Smooth Button", [self.height as f32, self.height as f32]);
+        let [width, height] = self.size.unwrap();
+
+        ui.invisible_button("Smooth Button", [width, height]);
 
         let draw_list = ui.get_window_draw_list();
 
@@ -74,13 +73,13 @@ impl LayerRenderer {
             .build();
     }
 
-    pub fn set_data(&mut self, context : &mut Context) {
+    pub fn set_data(&mut self, context : &mut Context, _ui : &imgui::Ui) {
 
-        let (width, height) = (self.width, self.height);
+        let [width, height] = self.size.unwrap();
 
-        for y in height / 4..height * 3 / 4 {
+        for y in 0..height as u32 {
 
-            for x in width / 4..width * 3 / 4 {
+            for x in 0..width as u32 {
 
                 let color = Self::per_pixel(x as u32, y as u32);
 
@@ -91,8 +90,8 @@ impl LayerRenderer {
         let raw_data = self.data.clone().into_raw();
 
         let size = wgpu::Extent3d {
-            width,
-            height,
+            width : width as u32,
+            height : height as u32,
             ..Default::default()
         };
 
@@ -105,43 +104,33 @@ impl LayerRenderer {
 
         let texture = imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config);
 
-        texture.write(&context.queue, &raw_data, width, height);
+        texture.write(&context.queue, &raw_data, width as u32, height as u32);
 
         self.texture_id = context.renderer.textures.insert(texture);
     }
 
-    pub fn resize(&mut self, context : &mut Context, ui : &imgui::Ui) {
+    pub fn resize(&mut self, context : &mut Context, ui : &imgui::Ui, size : Option<[f32; 2]>) {
 
-        let mut imgui_region_size = [self.width as f32, self.height as f32];
+        let imgui_region_size = size.unwrap();
 
-        let new_imgui_region_size = Some(ui.content_region_avail());
+        let scale = &ui.io().display_framebuffer_scale;
 
-        if let Some(_size) = new_imgui_region_size {
-
-            // Resize render target, which is optional
-            if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
-
-                imgui_region_size = _size;
-
-                let scale = &ui.io().display_framebuffer_scale;
-
-                let texture_config = imgui_wgpu::TextureConfig {
-                    size : wgpu::Extent3d {
-                        width : (imgui_region_size[0] * scale[0]) as u32,
-                        height : (imgui_region_size[1] * scale[1]) as u32,
-                        ..Default::default()
-                    },
-                    usage : wgpu::TextureUsages::RENDER_ATTACHMENT
-                        | wgpu::TextureUsages::TEXTURE_BINDING,
-                    ..Default::default()
-                };
-
-                context.renderer.textures.replace(
-                    self.texture_id,
-                    imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config),
-                );
-            }
+        let texture_config = imgui_wgpu::TextureConfig {
+            size : wgpu::Extent3d {
+                width : (imgui_region_size[0] * scale[0]) as u32,
+                height : (imgui_region_size[1] * scale[1]) as u32,
+                ..Default::default()
+            },
+            usage : wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            ..Default::default()
         };
+
+        println!("w:{}    h:{}", imgui_region_size[0], imgui_region_size[1]);
+
+        context.renderer.textures.replace(
+            self.texture_id,
+            imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config),
+        );
     }
 
     fn convert_color(color : wgpu::Color) -> u8 {

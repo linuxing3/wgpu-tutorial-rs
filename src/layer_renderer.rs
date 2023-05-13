@@ -3,6 +3,7 @@ use image::*;
 
 pub struct LayerRenderer {
     pub texture_id : imgui::TextureId,
+    pub texture_texels : Vec<u8>,
     pub data : RgbaImage,
     pub size : Option<[f32; 2]>,
 }
@@ -12,46 +13,49 @@ impl LayerRenderer {
 
         if bytes.len() == 0 {
 
-            let size = wgpu::Extent3d {
-                width : 256,
-                height : 256,
-                ..Default::default()
-            };
+            println!("Not source, creating default cube texture");
 
-            let image = DynamicImage::new_rgba8(size.width, size.height);
+            // Create the texture
+            let texture_size = 256u32;
 
-            let texture = Texture::imgui_texture_from_raw(context, &image, size);
+            let texture_texels = Texture::create_texels(texture_size as usize);
 
-            // BUG:
+            let texture = Texture::recreate_image(context, texture_size, &texture_texels);
+
             let texture_id = context.renderer.textures.insert(texture);
+
+            let data = image::RgbaImage::new(256, 256);
 
             return LayerRenderer {
                 texture_id,
-                data : image.to_rgba8(),
-                size : Some([512.0, 512.0]),
+                texture_texels,
+                data,
+                size : Some([256.0, 256.0]),
             };
         } else {
+
+            println!("Got source, creating texture from file");
 
             let (image, size) = Texture::imgui_image_from_raw(bytes);
 
             let texture = Texture::imgui_texture_from_raw(context, &image, size);
 
-            // BUG:
+            let texture_texels = image.to_rgba8().to_vec();
+
             let texture_id = context.renderer.textures.insert(texture);
 
             return LayerRenderer {
                 texture_id,
+                texture_texels,
                 data : image.to_rgba8(),
                 size : Some([size.width as f32, size.height as f32]),
             };
         }
     }
 
-    pub fn render(&mut self, ui : &imgui::Ui) { self.build_image(ui); }
+    pub fn render(&mut self, _context : &mut Context, ui : &imgui::Ui, size : Option<[f32; 2]>) {
 
-    pub fn build_image(&mut self, ui : &imgui::Ui) {
-
-        let [width, height] = self.size.unwrap();
+        let [width, height] = size.unwrap();
 
         ui.invisible_button("Smooth Button", [width, height]);
 
@@ -71,66 +75,6 @@ impl LayerRenderer {
             .round_bot_right((ui.frame_count() + 3) / 60 % 4 == 2)
             .round_bot_left((ui.frame_count() + 2) / 60 % 4 == 3)
             .build();
-    }
-
-    pub fn set_data(&mut self, context : &mut Context, _ui : &imgui::Ui) {
-
-        let [width, height] = self.size.unwrap();
-
-        for y in 0..height as u32 {
-
-            for x in 0..width as u32 {
-
-                let color = Self::per_pixel(x as u32, y as u32);
-
-                self.data.put_pixel(x, y, color);
-            }
-        }
-
-        let raw_data = self.data.clone().into_raw();
-
-        let size = wgpu::Extent3d {
-            width : width as u32,
-            height : height as u32,
-            ..Default::default()
-        };
-
-        let texture_config = imgui_wgpu::TextureConfig {
-            size,
-            label : Some("raw texture"),
-            format : Some(wgpu::TextureFormat::Rgba8Unorm),
-            ..Default::default()
-        };
-
-        let texture = imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config);
-
-        texture.write(&context.queue, &raw_data, width as u32, height as u32);
-
-        self.texture_id = context.renderer.textures.insert(texture);
-    }
-
-    pub fn resize(&mut self, context : &mut Context, ui : &imgui::Ui, size : Option<[f32; 2]>) {
-
-        let imgui_region_size = size.unwrap();
-
-        let scale = &ui.io().display_framebuffer_scale;
-
-        let texture_config = imgui_wgpu::TextureConfig {
-            size : wgpu::Extent3d {
-                width : (imgui_region_size[0] * scale[0]) as u32,
-                height : (imgui_region_size[1] * scale[1]) as u32,
-                ..Default::default()
-            },
-            usage : wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            ..Default::default()
-        };
-
-        println!("w:{}    h:{}", imgui_region_size[0], imgui_region_size[1]);
-
-        context.renderer.textures.replace(
-            self.texture_id,
-            imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config),
-        );
     }
 
     fn convert_color(color : wgpu::Color) -> u8 {

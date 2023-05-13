@@ -8,9 +8,11 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn new(context : &mut texture::Context, bytes : &[u8]) -> Layer {
+    pub fn new(context : &mut texture::Context, data : &[u8]) -> Layer {
 
-        let renderer = LayerRenderer::new(context, bytes);
+        // let data : [u8; 0] = [];
+
+        let renderer = LayerRenderer::new(context, &data);
 
         let last_frame = Instant::now();
 
@@ -20,21 +22,14 @@ impl Layer {
         }
     }
 
-    pub fn render(&mut self, context : &mut texture::Context, ui : &imgui::Ui) {
-
-        self.renderer.set_data(context, ui);
-
-        self.renderer.render(ui);
-    }
-
-    pub fn resize(
+    pub fn render(
         &mut self,
         context : &mut texture::Context,
         ui : &imgui::Ui,
         size : Option<[f32; 2]>,
     ) {
 
-        self.renderer.resize(context, ui, size);
+        self.renderer.render(context, ui, size);
     }
 
     pub fn renderer(&self) -> &LayerRenderer { &self.renderer }

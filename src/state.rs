@@ -509,21 +509,10 @@ impl State {
 
                 new_imgui_region_size = Some(imgui_frame.content_region_avail());
 
-                layer.render(texture_context, &imgui_frame);
+                layer.render(texture_context, &imgui_frame, new_imgui_region_size);
 
                 window.end();
             };
-
-            if let Some(_size) = new_imgui_region_size {
-
-                // Resize render target, which is optional
-                if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
-
-                    imgui_region_size = _size;
-
-                    layer.resize(texture_context, imgui_frame, Some(imgui_region_size));
-                }
-            }
         }
 
         // NOTE: prepare render

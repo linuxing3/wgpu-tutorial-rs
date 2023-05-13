@@ -40,9 +40,18 @@ features = ["png", "jpeg"]
 #     "Element",
 # ]}
 
-# [[bin]]
-# name = "cube"
-# path = "examples/cube.rs"
-# [[bin]]
-# name = "custom-texture"
-# path = "examples/custom-texture.rs"
+[[bin]]
+name = "00"
+path = "example/cube.rs"
+
+[[bin]]
+name = "01"
+path = "example/custom-texture.rs"
+
+[[bin]]
+name = "02"
+path = "example/imgui-image-file.rs"
+
+[[bin]]
+name = "03"
+path = "example/imgui-texel-image.rs"

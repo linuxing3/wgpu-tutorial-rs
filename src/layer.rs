@@ -1,11 +1,6 @@
 use crate::layer_renderer::LayerRenderer;
 use crate::texture;
-use imgui::*;
 use std::time::Instant;
-
-use crate::State;
-
-use crate::Camera;
 
 pub struct Layer {
     pub renderer : LayerRenderer,

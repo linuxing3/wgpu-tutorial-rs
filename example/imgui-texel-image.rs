@@ -161,6 +161,17 @@ impl State {
         });
 
         // Create pipeline layout
+        //
+        // 1. Vertex entry
+        // struct Locals {
+        //     transform: mat4x4<f32>,
+        // };
+        // @group(0) @binding(0)
+        // var<uniform> r_locals: Locals;
+
+        // 2. texture entry
+        // @group(0) @binding(1)
+        // var r_color: texture_2d<u32>;
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label : None,
             entries : &[

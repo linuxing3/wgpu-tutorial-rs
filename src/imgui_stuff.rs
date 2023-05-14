@@ -1,32 +1,11 @@
 use imgui::*;
-use imgui_wgpu::{Renderer, RendererConfig};
 
 pub struct ImguiController {
-    pub imgui_context : Option<imgui::Context>,
-    pub platform : Option<imgui_winit_support::WinitPlatform>,
+    pub imgui_context : imgui::Context,
+    pub platform : imgui_winit_support::WinitPlatform,
 }
 
 impl ImguiController {
-    // pub fn create_render(
-    //     &mut self,
-    //     surface_desc : wgpu::SurfaceConfiguration,
-    //     device : &wgpu::Device,
-    //     queue : &wgpu::Queue,
-    // ) -> Renderer {
-    //
-    //     let renderer_config = RendererConfig {
-    //         texture_format : surface_desc.format,
-    //         ..Default::default()
-    //     };
-    //
-    //     Renderer::new(
-    //         &mut self.imgui_context.unwrap(),
-    //         &device,
-    //         &queue,
-    //         renderer_config,
-    //     )
-    // }
-
     pub fn new(window : &winit::window::Window, hidpi_factor : f64) -> ImguiController {
 
         // Set up dear imgui
@@ -58,8 +37,12 @@ impl ImguiController {
             }]);
 
         ImguiController {
-            imgui_context : Some(imgui_context),
-            platform : Some(platform),
+            imgui_context,
+            platform,
         }
     }
+
+    pub fn imgui_context(&self) -> &imgui::Context { &self.imgui_context }
+
+    pub fn platform(&self) -> &imgui_winit_support::WinitPlatform { &self.platform }
 }

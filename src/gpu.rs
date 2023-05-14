@@ -9,7 +9,6 @@ use winit::{
 use pollster::block_on;
 
 pub struct Gpu {
-    pub window : winit::window::Window,
     pub surface : wgpu::Surface,
     pub device : wgpu::Device,
     pub queue : wgpu::Queue,
@@ -18,7 +17,7 @@ pub struct Gpu {
 }
 
 impl Gpu {
-    pub fn new(event_loop : &EventLoop<()>) -> Gpu {
+    pub fn new(window : &mut Window) -> Gpu {
 
         env_logger::init();
 
@@ -27,29 +26,22 @@ impl Gpu {
             ..Default::default()
         });
 
-        let (window, size, surface) = {
+        let version = env!("CARGO_PKG_VERSION");
 
-            let version = env!("CARGO_PKG_VERSION");
+        window.set_inner_size(LogicalSize {
+            width : 1280.0,
+            height : 720.0,
+        });
 
-            let window = Window::new(&event_loop).unwrap();
+        window.set_title(&format!("imgui-wgpu {version}"));
 
-            window.set_inner_size(LogicalSize {
-                width : 1280.0,
-                height : 720.0,
-            });
+        let size = window.inner_size();
 
-            window.set_title(&format!("imgui-wgpu {version}"));
+        let surface = unsafe {
 
-            let size = window.inner_size();
-
-            let surface = unsafe {
-
-                instance.create_surface(&window)
-            }
-            .unwrap();
-
-            (window, size, surface)
-        };
+            instance.create_surface(window)
+        }
+        .unwrap();
 
         let hidpi_factor = window.scale_factor();
 
@@ -77,7 +69,6 @@ impl Gpu {
         surface.configure(&device, &surface_desc);
 
         Gpu {
-            window,
             surface,
             device,
             queue,

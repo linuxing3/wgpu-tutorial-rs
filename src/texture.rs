@@ -19,6 +19,28 @@ pub struct Texture {
 // }
 
 impl Texture {
+    pub fn new_texture(context : &mut Context, size : [f32; 2]) -> imgui::TextureId {
+
+        // Stores a texture for displaying with imgui::Image(),
+        // also as a texture view for rendering into it
+
+        let texture_config = imgui_wgpu::TextureConfig {
+            size : wgpu::Extent3d {
+                width : size[0] as u32,
+                height : size[1] as u32,
+                ..Default::default()
+            },
+            usage : wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            ..Default::default()
+        };
+
+        let texture = imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config);
+
+        let texture_id = context.renderer.textures.insert(texture);
+
+        texture_id
+    }
+
     pub fn from_bytes(bytes : &[u8], context : &Context, label : &str) -> Result<Self> {
 
         let img = image::load_from_memory(bytes)?;

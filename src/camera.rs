@@ -34,6 +34,8 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 
+// multi dimention array
+// [ [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4] ]
 pub struct CameraUniform {
     view_proj : [[f32; 4]; 4],
 }

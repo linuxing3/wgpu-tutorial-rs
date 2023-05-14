@@ -131,9 +131,6 @@ impl State {
         //
         surface.configure(&device, &config);
 
-        // NOTE: images
-        // [doc] https://sotrh.github.io/learn-wgpu/beginner/tutorial5-textures/#loading-an-image-from-a-file
-
         // NOTE: camera
 
         let camera = Camera {
@@ -233,6 +230,9 @@ impl State {
             renderer : &mut renderer,
         };
 
+        // NOTE: images
+        // [doc] https://sotrh.github.io/learn-wgpu/beginner/tutorial5-textures/#loading-an-image-from-a-file
+
         let diffuse_texture =
             texture::Texture::from_bytes(diffuse_bytes, &layer_context, "happy-tree.png").unwrap(); // CHANGED!
 
@@ -280,7 +280,7 @@ impl State {
 
         // NOTE: Normal triangle render stuff
 
-        // render_pipeline
+        // TODO: render_pipeline
         let shader =
             device.create_shader_module(wgpu::include_wgsl!("../assets/shaders/shader.wgsl"));
 
@@ -419,23 +419,6 @@ impl State {
 
             self.surface.configure(&self.device, &self.config);
         }
-
-        // imgui
-
-        // let new_size = imgui_frame.content_region_avail();
-        //
-        // let imgui_frame = self.imgui_context.frame();
-        //
-        // let texture_context = &mut texture::Context {
-        //     device : &self.device,
-        //     queue : &self.queue,
-        //     renderer : &mut self.renderer,
-        // };
-        //
-        // for layer in &mut self.layers {
-        //
-        //     layer.resize(texture_context, &imgui_frame, Some(new_size));
-        // }
     }
 
     pub fn input(&mut self, event : &WindowEvent) -> bool {
@@ -445,11 +428,15 @@ impl State {
 
     pub fn update(&mut self) {
 
+        // update camera eye, target, fov,
+
         self.camera_controller.update_camera(&mut self.camera);
+
+        // update v-p matrix from camera eye, target, fov, up
 
         self.camera_uniform.update_view_proj(&self.camera);
 
-        // NOTE: uniform information -> uniform buffer
+        // NOTE: camera.vp matrix -> slice -> uniform buffer -> shader
         self.queue.write_buffer(
             &self.camera_buffer,
             0,

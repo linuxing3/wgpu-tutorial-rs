@@ -1,14 +1,7 @@
 // NOTE: https://sotrh.github.io/learn-wgpu/beginner/tutorial6-uniforms/#a-controller-for-our-camera
 
+use crate::share::OPENGL_TO_WGPU_MATRIX;
 use winit::event::{ElementState, KeyboardInput, VirtualKeyCode, WindowEvent};
-
-#[rustfmt::skip]
-pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
-    1.0, 0.0, 0.0, 0.0,
-    0.0, 1.0, 0.0, 0.0,
-    0.0, 0.0, 0.5, 0.0,
-    0.0, 0.0, 0.5, 1.0,
-);
 
 pub struct Camera {
     pub eye : cgmath::Point3<f32>,
@@ -21,6 +14,7 @@ pub struct Camera {
 }
 
 impl Camera {
+    // dynamic matrix
     pub fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
 
         let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
@@ -165,9 +159,9 @@ impl CameraController {
         let right = forward_norm.cross(camera.up);
 
         // Redo radius calc in case the up/ down is pressed.
-        let forward = camera.target - camera.eye;
-
-        let forward_mag = forward.magnitude();
+        // let forward = camera.target - camera.eye;
+        //
+        // let forward_mag = forward.magnitude();
 
         if self.is_right_pressed {
 

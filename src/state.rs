@@ -1,5 +1,7 @@
 extern crate imgui_winit_support;
 
+use cgmath::prelude::*;
+
 use crate::camera::*;
 use crate::layer::Layer;
 use crate::share::*;
@@ -31,6 +33,10 @@ pub struct State {
     // texture
     pub diffuse_bind_group : wgpu::BindGroup,
     pub diffuse_texture : texture::Texture,
+
+    // instance
+    instances : Vec<Instance>,
+    instance_buffer : wgpu::Buffer,
 
     // camera
     pub camera : Camera,
@@ -131,7 +137,7 @@ impl State {
         //
         surface.configure(&device, &config);
 
-        // NOTE: camera
+        // NOTE: camera controller -> camera -> unifom -> buffer -> vextex shader
 
         let camera = Camera {
             eye : (0.0, 1.0, 2.0).into(),
@@ -155,6 +161,7 @@ impl State {
             usage : wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+        // @group(1) @binding(0) camera
         let camera_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries : &[wgpu::BindGroupLayoutEntry {
@@ -296,8 +303,8 @@ impl State {
             layout : Some(&render_pipeline_layout),
             vertex : wgpu::VertexState {
                 module : &shader,
-                entry_point : "vs_main",     // 1.
-                buffers : &[Vertex::desc()], // 2.
+                entry_point : "vs_main",                          // 1.
+                buffers : &[Vertex::desc(), InstanceRaw::desc()], // 2. added instances
             },
             fragment : Some(wgpu::FragmentState {
                 // 3.
@@ -369,6 +376,43 @@ impl State {
 
         let last_cursor = None;
 
+        let instances = (0..NUM_INSTANCES_PER_ROW)
+            .flat_map(|z| {
+
+                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+
+                    let position = cgmath::Vector3 {
+                        x : x as f32,
+                        y : 0.0,
+                        z : z as f32,
+                    } - INSTANCE_DISPLACEMENT;
+
+                    let rotation = if position.is_zero() {
+
+                        // this is needed so an object at (0, 0, 0) won't get scaled to zero
+                        // as Quaternions can effect scale if they're not created correctly
+                        cgmath::Quaternion::from_axis_angle(
+                            cgmath::Vector3::unit_z(),
+                            cgmath::Deg(0.0),
+                        )
+                    } else {
+
+                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                    };
+
+                    Instance { position, rotation }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+
+        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label : Some("Instance Buffer"),
+            contents : bytemuck::cast_slice(&instance_data),
+            usage : wgpu::BufferUsages::VERTEX,
+        });
+
         Self {
             window,
             surface,
@@ -381,6 +425,8 @@ impl State {
             vertex_buffer,
             index_buffer,
             num_indices,
+            instance_buffer,
+            instances,
             diffuse_bind_group,
             diffuse_texture,
             camera,
@@ -543,17 +589,23 @@ impl State {
 
             render_pass.set_pipeline(&self.render_pipeline); // 2.
 
+            //group 0, binding 0 texture
+            //group 0, binding 1 sampler
             render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]); // NOTE: texture with pipeline
 
+            // group 1, binding 0 camera_uniform
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]); // NOTE: camera with 3D effect
 
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..)); //NOTE: vertex cached with uniform 3d effect
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..)); //NOTE: more instances
 
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16); // NOTE: index cached
 
             // NOTE: draw shapes from pipeline on surface
 
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.NOTE: more parameter than draw method
+            // render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.NOTE: more
+            // parameter than draw method
+            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _); // 3.NOTE: more parameter than draw method
 
             // NOTE: render imgui
 

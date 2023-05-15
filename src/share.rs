@@ -29,13 +29,13 @@ pub struct VertexBasic {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 
-pub struct Vertex {
+struct Vertex {
     position : [f32; 3],
     tex_coords : [f32; 2], // NEW!
 }
 
 impl Vertex {
-    pub fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
 
         const ATTRIBS : [wgpu::VertexAttribute; 2] =
             wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2];
@@ -60,7 +60,7 @@ impl Vertex {
     }
 }
 
-pub const VERTICES : &[Vertex] = &[
+const VERTICES : &[Vertex] = &[
     // Changed
     Vertex {
         position : [-0.0868241, 0.49240386, 0.0],

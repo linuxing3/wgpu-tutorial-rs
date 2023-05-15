@@ -4,6 +4,8 @@ use cgmath::prelude::*;
 
 use crate::camera::*;
 use crate::layer::Layer;
+use crate::model::Model;
+use crate::resource;
 use crate::share::*;
 use crate::texture;
 
@@ -25,14 +27,16 @@ pub struct State {
 
     // Pipeline
     pub render_pipeline : wgpu::RenderPipeline,
-    pub vertex_buffer : wgpu::Buffer,
-    pub index_buffer : wgpu::Buffer,
+    // pub vertex_buffer : wgpu::Buffer,
+    // pub index_buffer : wgpu::Buffer,
     // num_vertices : u32,
-    pub num_indices : u32,
+    // pub num_indices : u32,
 
     // texture
     pub diffuse_bind_group : wgpu::BindGroup,
     pub diffuse_texture : texture::Texture,
+    pub depth_texture : texture::Texture,
+    pub obj_model : Model,
 
     // instance
     instances : Vec<Instance>,
@@ -285,6 +289,10 @@ impl State {
             label : Some("diffuse_bind_group"),
         });
 
+        // depth_texture
+        let depth_texture =
+            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+
         // NOTE: Normal triangle render stuff
 
         // TODO: render_pipeline
@@ -298,13 +306,15 @@ impl State {
                 push_constant_ranges: &[],
             });
 
+        use crate::model::ModelVertex;
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label : Some("Render Pipeline"),
             layout : Some(&render_pipeline_layout),
             vertex : wgpu::VertexState {
                 module : &shader,
-                entry_point : "vs_main",                          // 1.
-                buffers : &[Vertex::desc(), InstanceRaw::desc()], // 2. added instances
+                entry_point : "vs_main",                               // 1.
+                buffers : &[ModelVertex::desc(), InstanceRaw::desc()], // 2. added instances
             },
             fragment : Some(wgpu::FragmentState {
                 // 3.
@@ -329,7 +339,14 @@ impl State {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative : false,
             },
-            depth_stencil : None, // 1.
+            depth_stencil : None,
+            // depth_stencil : Some(wgpu::DepthStencilState {
+            //     format : texture::Texture::DEPTH_FORMAT,
+            //     depth_write_enabled : true,
+            //     depth_compare : wgpu::CompareFunction::Less, // 1.
+            //     stencil : wgpu::StencilState::default(),     // 2.
+            //     bias : wgpu::DepthBiasState::default(),
+            // }),
             multisample : wgpu::MultisampleState {
                 count : 1,                         // 2.
                 mask : !0,                         // 3.
@@ -340,24 +357,24 @@ impl State {
 
         // NOTE: vertex buffer
 
-        let vertex_buffer_desc = &wgpu::util::BufferInitDescriptor {
-            label : Some("Vertex Buffer"),
-            contents : bytemuck::cast_slice(VERTICES),
-            usage : wgpu::BufferUsages::VERTEX,
-        };
+        // let vertex_buffer_desc = &wgpu::util::BufferInitDescriptor {
+        //     label : Some("Vertex Buffer"),
+        //     contents : bytemuck::cast_slice(VERTICES),
+        //     usage : wgpu::BufferUsages::VERTEX,
+        // };
+        //
+        // let vertex_buffer = device.create_buffer_init(vertex_buffer_desc);
+        //
+        // // NOTE: index buffer
+        // let index_buffer_desc = &wgpu::util::BufferInitDescriptor {
+        //     label : Some("Index Buffer"),
+        //     contents : bytemuck::cast_slice(INDICES),
+        //     usage : wgpu::BufferUsages::INDEX,
+        // };
+        //
+        // let index_buffer = device.create_buffer_init(index_buffer_desc);
 
-        let vertex_buffer = device.create_buffer_init(vertex_buffer_desc);
-
-        // NOTE: index buffer
-        let index_buffer_desc = &wgpu::util::BufferInitDescriptor {
-            label : Some("Index Buffer"),
-            contents : bytemuck::cast_slice(INDICES),
-            usage : wgpu::BufferUsages::INDEX,
-        };
-
-        let index_buffer = device.create_buffer_init(index_buffer_desc);
-
-        let num_indices = INDICES.len() as u32;
+        // let num_indices = INDICES.len() as u32;
 
         // ---------------------------------------------------------------------------------
         // NOTE: prepare imgui layers
@@ -376,10 +393,16 @@ impl State {
 
         let last_cursor = None;
 
+        const SPACE_BETWEEN : f32 = 3.0;
+
         let instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|z| {
 
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+
+                    let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
+
+                    let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
                     let position = cgmath::Vector3 {
                         x : x as f32,
@@ -413,6 +436,11 @@ impl State {
             usage : wgpu::BufferUsages::VERTEX,
         });
 
+        let obj_model =
+            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
+
         Self {
             window,
             surface,
@@ -422,13 +450,15 @@ impl State {
             size,
             clear_color,
             render_pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices,
+            // vertex_buffer,
+            // index_buffer,
+            // num_indices,
             instance_buffer,
             instances,
             diffuse_bind_group,
             diffuse_texture,
+            depth_texture,
+            obj_model,
             camera,
             camera_controller,
             camera_buffer,
@@ -464,6 +494,9 @@ impl State {
             };
 
             self.surface.configure(&self.device, &self.config);
+
+            self.depth_texture =
+                texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
 
@@ -578,6 +611,14 @@ impl State {
                     },
                 })],
                 depth_stencil_attachment : None,
+                // depth_stencil_attachment : Some(wgpu::RenderPassDepthStencilAttachment {
+                //     view : &self.depth_texture.view,
+                //     depth_ops : Some(wgpu::Operations {
+                //         load : wgpu::LoadOp::Clear(1.0),
+                //         store : true,
+                //     }),
+                //     stencil_ops : None,
+                // }),
             });
 
             // NOTE: bindings
@@ -591,21 +632,44 @@ impl State {
 
             //group 0, binding 0 texture
             //group 0, binding 1 sampler
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]); // NOTE: texture with pipeline
+            // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]); // NOTE:
+            // texture with pipeline
 
             // group 1, binding 0 camera_uniform
             render_pass.set_bind_group(1, &self.camera_bind_group, &[]); // NOTE: camera with 3D effect
 
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..)); //NOTE: vertex cached with uniform 3d effect
+            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..)); //NOTE:
+            // vertex cached with uniform 3d effect
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..)); //NOTE: more instances
 
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16); // NOTE: index cached
+            // render_pass.set_index_buffer(self.index_buffer.slice(..),
+            // wgpu::IndexFormat::Uint16); // NOTE: index cached
+
+            render_pass.set_pipeline(&self.render_pipeline);
+
+            use crate::model::DrawModel;
+
+            let mesh = &self.obj_model.meshes[0];
+
+            let material = &self.obj_model.materials[mesh.material];
+
+            render_pass.draw_mesh_instanced(
+                mesh,
+                material,
+                0..self.instances.len() as u32,
+                &self.camera_bind_group,
+            );
 
             // NOTE: draw shapes from pipeline on surface
 
             // render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.NOTE: more
             // parameter than draw method
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as _); // 3.NOTE: more parameter than draw method
+            // render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as
+            // _); // 3.NOTE: more parameter than draw method
+
+            // use model::DrawModel;
+            // render_pass.draw_mesh_instanced(&self.obj_model.meshes[0],
+            // 0..self.instances.len() as u32);
 
             // NOTE: render imgui
 

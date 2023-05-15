@@ -4,6 +4,8 @@ pub mod gpu;
 pub mod imgui_stuff;
 pub mod layer;
 pub mod layer_renderer;
+pub mod model;
+pub mod resource;
 pub mod share;
 pub mod state;
 pub mod swapchain;

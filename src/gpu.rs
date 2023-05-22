@@ -1,4 +1,4 @@
-use wgpu::{include_wgsl, util::DeviceExt, Extent3d};
+use wgpu::{Instance, Surface, Device, Queue};
 use winit::{
     dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -9,7 +9,6 @@ use winit::{
 use pollster::block_on;
 
 pub struct Gpu {
-    pub surface : wgpu::Surface,
     pub device : wgpu::Device,
     pub queue : wgpu::Queue,
     pub hidpi_factor : f64,
@@ -17,31 +16,7 @@ pub struct Gpu {
 }
 
 impl Gpu {
-    pub fn new(window : &mut Window) -> Gpu {
-
-        env_logger::init();
-
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends : wgpu::Backends::PRIMARY,
-            ..Default::default()
-        });
-
-        let version = env!("CARGO_PKG_VERSION");
-
-        window.set_inner_size(LogicalSize {
-            width : 1280.0,
-            height : 720.0,
-        });
-
-        window.set_title(&format!("imgui-wgpu {version}"));
-
-        let size = window.inner_size();
-
-        let surface = unsafe {
-
-            instance.create_surface(window)
-        }
-        .unwrap();
+    pub fn new(window : &mut Window, instance: &Instance, surface: &Surface) -> Gpu {
 
         let hidpi_factor = window.scale_factor();
 
@@ -55,6 +30,7 @@ impl Gpu {
         let (device, queue) =
             block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
 
+        let size = window.inner_size();
         // Set up swap chain
         let surface_desc = wgpu::SurfaceConfiguration {
             usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -69,7 +45,6 @@ impl Gpu {
         surface.configure(&device, &surface_desc);
 
         Gpu {
-            surface,
             device,
             queue,
             hidpi_factor,

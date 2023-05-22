@@ -4,16 +4,31 @@ use wgpu::{include_wgsl, util::DeviceExt};
 use crate::share::{create_cube_texels, create_vertices, ImVertex, OPENGL_TO_WGPU_MATRIX};
 
 pub struct Swapchain {
-    pub vertex_buffer : wgpu::Buffer,
-    pub index_buffer : wgpu::Buffer,
+    pub vertex_buf : wgpu::Buffer,
+    pub index_buf : wgpu::Buffer,
     pub index_count : usize,
     pub bind_group : wgpu::BindGroup,
-    pub uniform_buffer : wgpu::Buffer,
-    pub render_pipeline : wgpu::RenderPipeline,
+    pub uniform_buf : wgpu::Buffer,
+    pub pipeline : wgpu::RenderPipeline,
     pub time : f32,
 }
 
 impl Swapchain {
+    fn generate_matrix(aspect_ratio : f32) -> cgmath::Matrix4<f32> {
+
+        let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
+
+        let mx_view = cgmath::Matrix4::look_at_rh(
+            cgmath::Point3::new(1.5f32, -5.0, 3.0),
+            cgmath::Point3::new(0f32, 0.0, 0.0),
+            cgmath::Vector3::unit_z(),
+        );
+
+        let mx_correction = OPENGL_TO_WGPU_MATRIX;
+
+        mx_correction * mx_projection * mx_view
+    }
+
     pub fn new(
         config : &wgpu::SurfaceConfiguration,
         device : &wgpu::Device,
@@ -56,15 +71,17 @@ impl Swapchain {
         // pipeline
         let render_pipeline = Self::configure_pipeline(config, device, &bind_group_layout);
 
+        let time = 0.0;
+
         // Done
         Swapchain {
-            vertex_buffer,
-            index_buffer,
+            vertex_buf: vertex_buffer,
+            index_buf: index_buffer,
             index_count,
             bind_group,
-            uniform_buffer,
-            render_pipeline,
-            time : 0.0,
+            uniform_buf: uniform_buffer,
+            pipeline: render_pipeline,
+            time,
         }
     }
 
@@ -256,28 +273,6 @@ impl Swapchain {
         pipeline
     }
 
-    // not has_dynamic_effect
-    fn generate_matrix(aspect_ratio : f32) -> cgmath::Matrix4<f32> {
-
-        // TODO:
-
-        // let proj = cgmath::perspective(cgmath::Deg(self.fovy), self.aspect,
-        // self.znear, self.zfar);
-        // let view = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
-
-        let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
-
-        let mx_view = cgmath::Matrix4::look_at_rh(
-            cgmath::Point3::new(1.5f32, -5.0, 3.0),
-            cgmath::Point3::new(0f32, 0.0, 0.0),
-            cgmath::Vector3::unit_z(),
-        );
-
-        let mx_correction = OPENGL_TO_WGPU_MATRIX;
-
-        mx_correction * mx_projection * mx_view
-    }
-
     pub fn update(&mut self, delta_time : f32) { self.time += delta_time; }
 
     pub fn setup_camera(&mut self, queue : &wgpu::Queue, size : [f32; 2]) {
@@ -286,56 +281,7 @@ impl Swapchain {
 
         let mx_ref : &[f32; 16] = mx_total.as_ref();
 
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(mx_ref));
+        queue.write_buffer(&self.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
     }
 
-    pub fn render(
-        &mut self,
-        view : &wgpu::TextureView,
-        device : &wgpu::Device,
-        queue : &wgpu::Queue,
-    ) {
-
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label : None });
-
-        {
-
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label : None,
-                color_attachments : &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    resolve_target : None,
-                    ops : wgpu::Operations {
-                        load : wgpu::LoadOp::Clear(wgpu::Color {
-                            r : 0.1,
-                            g : 0.2,
-                            b : 0.3,
-                            a : 1.0,
-                        }),
-                        store : true,
-                    },
-                })],
-                depth_stencil_attachment : None,
-            });
-
-            rpass.push_debug_group("Prepare data for draw.");
-
-            rpass.set_pipeline(&self.render_pipeline);
-
-            rpass.set_bind_group(0, &self.bind_group, &[]);
-
-            rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-
-            rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-
-            rpass.pop_debug_group();
-
-            rpass.insert_debug_marker("Draw!");
-
-            rpass.draw_indexed(0..self.index_count as u32, 0, 0..1);
-        }
-
-        queue.submit(Some(encoder.finish()));
-    }
 }

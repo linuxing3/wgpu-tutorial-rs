@@ -636,7 +636,8 @@ impl State {
             // texture with pipeline
 
             // group 1, binding 0 camera_uniform
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]); // NOTE: camera with 3D effect
+            // render_pass.set_bind_group(1, &self.camera_bind_group, &[]); // NOTE: camera
+            // with 3D effect
 
             // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..)); //NOTE:
             // vertex cached with uniform 3d effect

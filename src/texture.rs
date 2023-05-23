@@ -415,7 +415,7 @@ mod test {
 
         let bytes = include_bytes!("../assets/images/happy-tree.png");
 
-        let (image, size) = Texture::imgui_image_from_raw(bytes);
+        let (_image, size) = Texture::imgui_image_from_raw(bytes);
 
         println!("{}", size.height);
 

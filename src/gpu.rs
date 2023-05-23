@@ -1,8 +1,5 @@
-use wgpu::{Instance, Surface, Device, Queue};
+use wgpu::{Instance, Surface};
 use winit::{
-    dpi::LogicalSize,
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
 

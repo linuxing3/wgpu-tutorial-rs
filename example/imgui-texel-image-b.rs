@@ -1,12 +1,11 @@
-use bytemuck::{Pod, Zeroable};
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
 use imgui_winit_support::WinitPlatform;
-use pollster::block_on;
+
 use std::time::Instant;
-use wgpu::{include_wgsl, util::DeviceExt, Extent3d};
+use wgpu::Extent3d;
 use winit::{
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
@@ -14,7 +13,6 @@ use winit::{
 
 use wgpu_tutorial_rs::gpu::Gpu;
 use wgpu_tutorial_rs::swapchain::Swapchain;
-use wgpu_tutorial_rs::window::WindowController;
 
 struct State {
     swapchain : Swapchain,

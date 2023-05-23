@@ -5,18 +5,39 @@ use pollster::block_on;
 use std::time::Instant;
 use wgpu::{include_wgsl, util::DeviceExt, Extent3d};
 use winit::{
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
 
 use wgpu_tutorial_rs::share::*;
-use wgpu_tutorial_rs::swapchain::Swapchain;
-use wgpu_tutorial_rs::gpu::Gpu;
 
 struct State {
-    swapchain: Swapchain
+    vertex_buf : wgpu::Buffer,
+    index_buf : wgpu::Buffer,
+    index_count : usize,
+    bind_group : wgpu::BindGroup,
+    uniform_buf : wgpu::Buffer,
+    pipeline : wgpu::RenderPipeline,
+    time : f32,
+}
+
+impl State {
+    fn generate_matrix(aspect_ratio : f32) -> cgmath::Matrix4<f32> {
+
+        let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
+
+        let mx_view = cgmath::Matrix4::look_at_rh(
+            cgmath::Point3::new(1.5f32, -5.0, 3.0),
+            cgmath::Point3::new(0f32, 0.0, 0.0),
+            cgmath::Vector3::unit_z(),
+        );
+
+        let mx_correction = OPENGL_TO_WGPU_MATRIX;
+
+        mx_correction * mx_projection * mx_view
+    }
 }
 
 impl State {
@@ -26,11 +47,193 @@ impl State {
         queue : &wgpu::Queue,
     ) -> Self {
 
-        let swapchain = Swapchain::new(config, device, queue);
+        use std::mem;
+
+        // Create the vertex and index buffers
+        let vertex_size = mem::size_of::<ImVertex>();
+
+        let (vertex_data, index_data) = create_vertices();
+
+        let vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label : Some("Vertex Buffer"),
+            contents : bytemuck::cast_slice(&vertex_data),
+            usage : wgpu::BufferUsages::VERTEX,
+        });
+
+        let index_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label : Some("Index Buffer"),
+            contents : bytemuck::cast_slice(&index_data),
+            usage : wgpu::BufferUsages::INDEX,
+        });
+
+        // Create pipeline layout
+        //
+        // 1. Vertex entry
+        // struct Locals {
+        //     transform: mat4x4<f32>,
+        // };
+        // @group(0) @binding(0)
+        // var<uniform> r_locals: Locals;
+
+        // 2. texture entry
+        // @group(0) @binding(1)
+        // var r_color: texture_2d<u32>;
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label : None,
+            entries : &[
+                wgpu::BindGroupLayoutEntry {
+                    binding : 0,
+                    visibility : wgpu::ShaderStages::VERTEX,
+                    ty : wgpu::BindingType::Buffer {
+                        ty : wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset : false,
+                        min_binding_size : wgpu::BufferSize::new(64),
+                    },
+                    count : None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding : 1,
+                    visibility : wgpu::ShaderStages::FRAGMENT,
+                    ty : wgpu::BindingType::Texture {
+                        multisampled : false,
+                        sample_type : wgpu::TextureSampleType::Uint,
+                        view_dimension : wgpu::TextureViewDimension::D2,
+                    },
+                    count : None,
+                },
+            ],
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label : None,
+            bind_group_layouts : &[&bind_group_layout],
+            push_constant_ranges : &[],
+        });
+
+        // Create the texture
+        let texture_size = 256u32;
+
+        let texture_texels = create_cube_texels(texture_size as usize);
+
+        let cube_texture_extent = wgpu::Extent3d {
+            width : texture_size,
+            height : texture_size,
+            depth_or_array_layers : 1,
+        };
+
+        let cube_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label : None,
+            size : cube_texture_extent,
+            mip_level_count : 1,
+            sample_count : 1,
+            dimension : wgpu::TextureDimension::D2,
+            format : wgpu::TextureFormat::R8Uint,
+            usage : wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats : &[wgpu::TextureFormat::R8Uint],
+        });
+
+        let cube_texture_view = cube_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        queue.write_texture(
+            cube_texture.as_image_copy(),
+            &texture_texels,
+            wgpu::ImageDataLayout {
+                offset : 0,
+                bytes_per_row : Some(std::num::NonZeroU32::new(texture_size).unwrap()),
+                rows_per_image : None,
+            },
+            cube_texture_extent,
+        );
+
+        // Create other resources
+        let mx_total = Self::generate_matrix(config.width as f32 / config.height as f32);
+
+        let mx_ref : &[f32; 16] = mx_total.as_ref();
+
+        let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label : Some("Uniform Buffer"),
+            contents : bytemuck::cast_slice(mx_ref),
+            usage : wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Create bind group
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout : &bind_group_layout,
+            entries : &[
+                wgpu::BindGroupEntry {
+                    binding : 0,
+                    resource : uniform_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding : 1,
+                    resource : wgpu::BindingResource::TextureView(&cube_texture_view),
+                },
+            ],
+            label : None,
+        });
+
+        let shader = device.create_shader_module(include_wgsl!("../assets/shaders/cube.wgsl"));
+
+        let vertex_buffers = [wgpu::VertexBufferLayout {
+            array_stride : vertex_size as wgpu::BufferAddress,
+            step_mode : wgpu::VertexStepMode::Vertex,
+            attributes : &[
+                wgpu::VertexAttribute {
+                    format : wgpu::VertexFormat::Float32x4,
+                    offset : 0,
+                    shader_location : 0,
+                },
+                wgpu::VertexAttribute {
+                    format : wgpu::VertexFormat::Float32x2,
+                    offset : 4 * 4,
+                    shader_location : 1,
+                },
+            ],
+        }];
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label : None,
+            layout : Some(&pipeline_layout),
+            vertex : wgpu::VertexState {
+                module : &shader,
+                entry_point : "vs_main",
+                buffers : &vertex_buffers,
+            },
+            fragment : Some(wgpu::FragmentState {
+                module : &shader,
+                entry_point : "fs_main",
+                targets : &[Some(config.format.into())],
+            }),
+            primitive : wgpu::PrimitiveState {
+                cull_mode : Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil : None,
+            multisample : wgpu::MultisampleState::default(),
+            multiview : None,
+        });
+
         // Done
         State {
-            swapchain
+            vertex_buf,
+            index_buf,
+            index_count : index_data.len(),
+            bind_group,
+            uniform_buf,
+            pipeline,
+            time : 0.0,
         }
+    }
+
+    fn update(&mut self, delta_time : f32) { self.time += delta_time; }
+
+    fn setup_camera(&mut self, queue : &wgpu::Queue, size : [f32; 2]) {
+
+        let mx_total = Self::generate_matrix(size[0] / size[1]);
+
+        let mx_ref : &[f32; 16] = mx_total.as_ref();
+
+        queue.write_buffer(&self.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
     }
 
     fn render(&mut self, view : &wgpu::TextureView, device : &wgpu::Device, queue : &wgpu::Queue) {
@@ -60,19 +263,19 @@ impl State {
 
             rpass.push_debug_group("Prepare data for draw.");
 
-            rpass.set_pipeline(&self.swapchain.pipeline);
+            rpass.set_pipeline(&self.pipeline);
 
-            rpass.set_bind_group(0, &self.swapchain.bind_group, &[]);
+            rpass.set_bind_group(0, &self.bind_group, &[]);
 
-            rpass.set_index_buffer(self.swapchain.index_buf.slice(..), wgpu::IndexFormat::Uint16);
+            rpass.set_index_buffer(self.index_buf.slice(..), wgpu::IndexFormat::Uint16);
 
-            rpass.set_vertex_buffer(0, self.swapchain.vertex_buf.slice(..));
+            rpass.set_vertex_buffer(0, self.vertex_buf.slice(..));
 
             rpass.pop_debug_group();
 
             rpass.insert_debug_marker("Draw!");
 
-            rpass.draw_indexed(0..self.swapchain.index_count as u32, 0, 0..1);
+            rpass.draw_indexed(0..self.index_count as u32, 0, 0..1);
         }
 
         queue.submit(Some(encoder.finish()));
@@ -91,13 +294,19 @@ fn main() {
         ..Default::default()
     });
 
-    let (mut window, size, surface) = {
+    let (window, size, surface) = {
 
         let version = env!("CARGO_PKG_VERSION");
 
         let window = Window::new(&event_loop).unwrap();
-        window.set_inner_size(PhysicalSize::new(1920, 1080));
+
+        window.set_inner_size(LogicalSize {
+            width : 1280.0,
+            height : 720.0,
+        });
+
         window.set_title(&format!("imgui-wgpu {version}"));
+
         let size = window.inner_size();
 
         let surface = unsafe {
@@ -111,7 +320,28 @@ fn main() {
 
     let hidpi_factor = window.scale_factor();
 
-    let gpu = Gpu::new(&mut window, &instance, &surface);
+    let adapter = block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference : wgpu::PowerPreference::HighPerformance,
+        compatible_surface : Some(&surface),
+        force_fallback_adapter : false,
+    }))
+    .unwrap();
+
+    let (device, queue) =
+        block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None)).unwrap();
+
+    // Set up swap chain
+    let surface_desc = wgpu::SurfaceConfiguration {
+        usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format : wgpu::TextureFormat::Bgra8UnormSrgb,
+        width : size.width,
+        height : size.height,
+        present_mode : wgpu::PresentMode::Fifo,
+        alpha_mode : wgpu::CompositeAlphaMode::Auto,
+        view_formats : vec![wgpu::TextureFormat::Bgra8Unorm],
+    };
+
+    surface.configure(&device, &surface_desc);
 
     // Set up dear imgui
     let mut imgui = imgui::Context::create();
@@ -150,11 +380,11 @@ fn main() {
     // };
 
     let renderer_config = RendererConfig {
-        texture_format : gpu.surface_desc.format,
+        texture_format : surface_desc.format,
         ..Default::default()
     };
 
-    let mut renderer_with_imgui = Renderer::new(&mut imgui, &gpu.device, &gpu.queue, renderer_config);
+    let mut renderer_with_imgui = Renderer::new(&mut imgui, &device, &queue, renderer_config);
 
     let mut last_frame = Instant::now();
 
@@ -162,7 +392,7 @@ fn main() {
 
     let mut imgui_region_size : [f32; 2] = [640.0, 480.0];
 
-    let mut state = State::init(&gpu.surface_desc, &gpu.device, &gpu.queue);
+    let mut state = State::init(&surface_desc, &device, &queue);
 
     // Stores a texture for displaying with imgui::Image(),
     // also as a texture view for rendering into it
@@ -177,7 +407,7 @@ fn main() {
         ..Default::default()
     };
 
-    let texture = Texture::new(&gpu.device, &renderer_with_imgui, texture_config);
+    let texture = Texture::new(&device, &renderer_with_imgui, texture_config);
 
     let example_texture_id = renderer_with_imgui.textures.insert(texture);
 
@@ -200,7 +430,17 @@ fn main() {
 
                 let size = window.inner_size();
 
-                surface.configure(&gpu.device, &gpu.surface_desc);
+                let surface_desc = wgpu::SurfaceConfiguration {
+                    usage : wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    format : wgpu::TextureFormat::Bgra8UnormSrgb,
+                    width : size.width,
+                    height : size.height,
+                    present_mode : wgpu::PresentMode::Fifo,
+                    alpha_mode : wgpu::CompositeAlphaMode::Auto,
+                    view_formats : vec![wgpu::TextureFormat::Bgra8Unorm],
+                };
+
+                surface.configure(&device, &surface_desc);
             }
             Event::WindowEvent {
                 event:
@@ -252,11 +492,11 @@ fn main() {
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 // Render example normally at background
-                state.swapchain.update(imgui_frame.io().delta_time);
+                state.update(imgui_frame.io().delta_time);
 
-                state.swapchain.setup_camera(&gpu.queue, imgui_frame.io().display_size);
+                state.setup_camera(&queue, imgui_frame.io().display_size);
 
-                state.render(&view, &gpu.device, &gpu.queue);
+                state.render(&view, &device, &queue);
 
                 // Store the new size of Image() or None to indicate that the window is
                 // collapsed.
@@ -295,12 +535,12 @@ fn main() {
 
                         renderer_with_imgui.textures.replace(
                             example_texture_id,
-                            Texture::new(&gpu.device, &renderer_with_imgui, texture_config),
+                            Texture::new(&device, &renderer_with_imgui, texture_config),
                         );
                     }
 
                     // Only render example to example_texture if thw window is not collapsed
-                    state.swapchain.setup_camera(&gpu.queue, _size);
+                    state.setup_camera(&queue, _size);
 
                     state.render(
                         renderer_with_imgui
@@ -308,13 +548,13 @@ fn main() {
                             .get(example_texture_id)
                             .unwrap()
                             .view(),
-                        &gpu.device,
-                        &gpu.queue,
+                        &device,
+                        &queue,
                     );
                 }
 
                 let mut command_encoder : wgpu::CommandEncoder =
-                    gpu.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label : None });
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label : None });
 
                 if last_cursor != Some(imgui_frame.mouse_cursor()) {
 
@@ -339,12 +579,12 @@ fn main() {
                     });
 
                 renderer_with_imgui
-                    .render(imgui.render(), &gpu.queue, &gpu.device, &mut renderpass)
+                    .render(imgui.render(), &queue, &device, &mut renderpass)
                     .expect("Rendering failed");
 
                 drop(renderpass);
 
-                gpu.queue.submit(Some(command_encoder.finish()));
+                queue.submit(Some(command_encoder.finish()));
 
                 main_frame.present();
             }

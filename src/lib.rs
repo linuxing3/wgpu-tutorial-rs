@@ -10,3 +10,4 @@ pub mod share;
 pub mod state;
 pub mod swapchain;
 pub mod texture;
+pub mod window;

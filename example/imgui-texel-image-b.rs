@@ -215,24 +215,25 @@ fn main() {
                 surface.configure(&gpu.device, &surface_desc);
             }
             Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                state: ElementState::Pressed,
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            }
-            | Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
+                ref event,
+                window_id: _,
             } => {
+                if !state.swapchain.handle_input(event) {
 
-                *control_flow = ControlFlow::Exit;
+                    match event {
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        _ => {}
+                    }
+                }
             }
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawEventsCleared => {

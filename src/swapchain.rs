@@ -1,5 +1,7 @@
+use crate::camera::{Camera, CameraController, CameraUniform};
 use std::mem;
-use wgpu::{include_wgsl, util::DeviceExt};
+use wgpu::{include_wgsl, util::DeviceExt, BufferUsages};
+use winit::event::WindowEvent;
 
 use crate::share::{create_cube_texels, create_vertices, ImVertex, OPENGL_TO_WGPU_MATRIX};
 
@@ -8,8 +10,12 @@ pub struct Swapchain {
     pub index_buf : wgpu::Buffer,
     pub index_count : usize,
     pub bind_group : wgpu::BindGroup,
-    pub uniform_buf : wgpu::Buffer,
     pub pipeline : wgpu::RenderPipeline,
+    // camera
+    pub uniform_buf : wgpu::Buffer,
+    pub camera : Camera,
+    pub camera_controller : CameraController,
+    pub camera_uniform : CameraUniform,
     pub time : f32,
 }
 
@@ -40,7 +46,7 @@ impl Swapchain {
 
         let index_count = index_data.len();
 
-        let (vertex_buffer, index_buffer) = Self::configure_vertex(device, vertex_data, index_data);
+        let (vertex_buf, index_buf) = Self::configure_vertex(device, vertex_data, index_data);
 
         // texture
 
@@ -63,24 +69,50 @@ impl Swapchain {
         );
 
         // uniform
-        let uniform_buffer = Self::configure_uniform(config, device);
-
-        let (bind_group, bind_group_layout) =
-            Self::configure_bind_group(device, &uniform_buffer, &cube_texture_view);
-
-        // pipeline
-        let render_pipeline = Self::configure_pipeline(config, device, &bind_group_layout);
 
         let time = 0.0;
 
+        // NOTE: camera controller -> camera -> unifom -> buffer -> vextex shader
+
+        let camera = Camera {
+            eye : (0.0, 1.0, 2.0).into(),
+            target : (0.0, 0.0, 0.0).into(),
+            up : cgmath::Vector3::unit_y(),
+            aspect : config.width as f32 / config.height as f32,
+            fovy : 45.0,
+            znear : 0.1,
+            zfar : 100.0,
+        };
+
+        let camera_controller = CameraController::new(0.2);
+
+        let mut camera_uniform = CameraUniform::new();
+
+        camera_uniform.update_view_proj(&camera);
+
+        let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label : Some("Camera Buffer"),
+            contents : bytemuck::cast_slice(&[camera_uniform]),
+            usage : BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+        });
+
+        let (bind_group, bind_group_layout) =
+            Self::configure_bind_group(device, &uniform_buf, &cube_texture_view);
+
+        // pipeline
+        let pipeline = Self::configure_pipeline(config, device, &bind_group_layout);
+
         // Done
         Swapchain {
-            vertex_buf : vertex_buffer,
-            index_buf : index_buffer,
+            vertex_buf,
+            index_buf,
             index_count,
             bind_group,
-            uniform_buf : uniform_buffer,
-            pipeline : render_pipeline,
+            uniform_buf,
+            camera,
+            camera_uniform,
+            camera_controller,
+            pipeline,
             time,
         }
     }
@@ -143,23 +175,9 @@ impl Swapchain {
         (cube_texture, cube_texture_view)
     }
 
-    fn configure_uniform(
-        config : &wgpu::SurfaceConfiguration,
-        device : &wgpu::Device,
-    ) -> wgpu::Buffer {
+    pub fn handle_input(&mut self, event : &WindowEvent) -> bool {
 
-        // Create other resources
-        let mx_total = Self::generate_matrix(config.width as f32 / config.height as f32);
-
-        let mx_ref : &[f32; 16] = mx_total.as_ref();
-
-        let uniform_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label : Some("Uniform Buffer"),
-            contents : bytemuck::cast_slice(mx_ref),
-            usage : wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        uniform_buf
+        self.camera_controller.process_events(event)
     }
 
     fn configure_bind_group(
@@ -168,6 +186,31 @@ impl Swapchain {
         cube_texture_view : &wgpu::TextureView,
     ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
 
+        // @group(1) @binding(0) camera
+        // let camera_bind_group_layout =
+        //     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        //         entries : &[wgpu::BindGroupLayoutEntry {
+        //             binding : 0,
+        //             visibility : wgpu::ShaderStages::VERTEX,
+        //             ty : wgpu::BindingType::Buffer {
+        //                 ty : wgpu::BufferBindingType::Uniform,
+        //                 has_dynamic_offset : false,
+        //                 min_binding_size : None,
+        //             },
+        //             count : None,
+        //         }],
+        //         label : Some("camera_bind_group_layout"),
+        //     });
+        //
+        // let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        //     layout : &camera_bind_group_layout,
+        //     entries : &[wgpu::BindGroupEntry {
+        //         binding : 0,
+        //         resource : uniform_buf.as_entire_binding(),
+        //     }],
+        //     label : Some("camera_bind_group"),
+        // });
+        //
         // Create pipeline layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label : None,
@@ -275,12 +318,32 @@ impl Swapchain {
 
     pub fn update(&mut self, delta_time : f32) { self.time += delta_time; }
 
-    pub fn setup_camera(&mut self, queue : &wgpu::Queue, size : [f32; 2]) {
+    pub fn update_camera(&mut self, queue : &wgpu::Queue, size : [f32; 2]) {
 
         let mx_total = Self::generate_matrix(size[0] / size[1]);
 
         let mx_ref : &[f32; 16] = mx_total.as_ref();
 
         queue.write_buffer(&self.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
+    }
+
+    // HACK:
+
+    pub fn setup_camera(&mut self, queue : &wgpu::Queue, _size : [f32; 2]) {
+
+        // update camera eye, target, fov,
+
+        self.camera_controller.update_camera(&mut self.camera);
+
+        // update v-p matrix from camera eye, target, fov, up
+
+        self.camera_uniform.update_view_proj(&self.camera);
+
+        // NOTE: camera.vp matrix -> slice -> uniform buffer -> shader
+        queue.write_buffer(
+            &self.uniform_buf,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 }

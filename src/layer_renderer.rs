@@ -1,61 +1,86 @@
-use crate::texture::*;
+use crate::texture::{self, *};
 use image::*;
+use imgui_wgpu::TextureConfig;
+use wgpu::{Extent3d, TextureUsages};
 
 pub struct LayerRenderer {
     pub texture_id : imgui::TextureId,
     pub texture_texels : Vec<u8>,
-    pub data : RgbaImage,
-    pub size : Option<[f32; 2]>,
+    pub image_data : RgbaImage,
+    pub size : [f32; 2],
 }
 
 impl LayerRenderer {
-    pub fn new(context : &mut Context, bytes : &[u8]) -> LayerRenderer {
+    pub fn new() -> LayerRenderer {
 
-        if bytes.len() == 0 {
+        println!("Got source, creating texture from file");
 
-            println!("Not source, creating default cube texture");
+        let image = image::DynamicImage::new_rgba8(0, 0);
 
-            // Create the texture
-            let texture_size = 256u32;
+        let texture_texels = vec![];
 
-            let texture_texels = Texture::create_texels(texture_size as usize);
+        let texture_id = imgui::TextureId::new(0);
 
-            let texture = Texture::recreate_image(context, texture_size, &texture_texels);
-
-            let texture_id = context.renderer.textures.insert(texture);
-
-            let data = image::RgbaImage::new(256, 256);
-
-            return LayerRenderer {
-                texture_id,
-                texture_texels,
-                data,
-                size : Some([256.0, 256.0]),
-            };
-        } else {
-
-            println!("Got source, creating texture from file");
-
-            let (image, size) = Texture::imgui_image_from_raw(bytes);
-
-            let texture = Texture::imgui_texture_from_raw(context, &image, size);
-
-            let texture_texels = image.to_rgba8().to_vec();
-
-            let texture_id = context.renderer.textures.insert(texture);
-
-            return LayerRenderer {
-                texture_id,
-                texture_texels,
-                data : image.to_rgba8(),
-                size : Some([size.width as f32, size.height as f32]),
-            };
+        LayerRenderer {
+            texture_id,
+            texture_texels,
+            image_data : image.to_rgba8(),
+            size : [0.0, 0.0],
         }
     }
 
-    pub fn render(&mut self, _context : &mut Context, ui : &imgui::Ui, size : Option<[f32; 2]>) {
+    pub fn set_bytes(&mut self, context : &mut Context, bytes : &[u8]) {
 
-        let [width, height] = size.unwrap();
+        println!("Got source, setting texture from file");
+
+        let (image, size) = Texture::imgui_image_from_raw(bytes);
+
+        let texture = Texture::imgui_texture_from_raw(context, &image, size);
+
+        self.size = [size.width as f32, size.height as f32];
+
+        context.renderer.textures.replace(self.texture_id, texture);
+    }
+
+    pub fn set_texels(&mut self, context : &mut Context, size : u32, texture_texels : Vec<u8>) {
+
+        let texture = texture::Texture::recreate_image(context, size, &texture_texels);
+
+        self.size = [size as f32, size as f32];
+
+        context.renderer.textures.replace(self.texture_id, texture);
+    }
+
+    pub fn resize(&mut self, context : &mut Context, ui : &imgui::Ui, new_size : [f32; 2]) {
+
+        if let Some(_size) = Some(new_size) {
+
+            // Resize render target, which is optional
+            if _size != self.size && _size[0] >= 1.0 && _size[1] >= 1.0 {
+
+                let scale = &ui.io().display_framebuffer_scale;
+
+                let texture_config = TextureConfig {
+                    size : Extent3d {
+                        width : (self.size[0] * scale[0]) as u32,
+                        height : (self.size[1] * scale[1]) as u32,
+                        ..Default::default()
+                    },
+                    usage : TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                    ..Default::default()
+                };
+
+                context.renderer.textures.replace(
+                    self.texture_id,
+                    imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config),
+                );
+            }
+        }
+    }
+
+    pub fn render(&mut self, _context : &mut Context, ui : &imgui::Ui, size : [f32; 2]) {
+
+        let [width, height] = size;
 
         ui.invisible_button("Smooth Button", [width, height]);
 

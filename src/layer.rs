@@ -1,5 +1,6 @@
 use crate::layer_renderer::LayerRenderer;
-use crate::texture;
+use crate::texture::{Context, Texture};
+use imgui::Ui;
 use std::time::Instant;
 
 pub struct Layer {
@@ -8,13 +9,13 @@ pub struct Layer {
 }
 
 impl Layer {
-    pub fn new(context : &mut texture::Context, data : &[u8]) -> Layer {
-
-        // let data : [u8; 0] = [];
-
-        let renderer = LayerRenderer::new(context, &data);
+    pub fn new(context : &mut Context, data : &[u8]) -> Layer {
 
         let last_frame = Instant::now();
+
+        let mut renderer = LayerRenderer::new();
+
+        renderer.set_bytes(context, data);
 
         Layer {
             renderer,
@@ -22,14 +23,23 @@ impl Layer {
         }
     }
 
-    pub fn render(
-        &mut self,
-        context : &mut texture::Context,
-        ui : &imgui::Ui,
-        size : Option<[f32; 2]>,
-    ) {
+    pub fn set_texels(&mut self, context : &mut Context, texture_size : u32) {
 
-        self.renderer.render2(context, ui, size);
+        // Create the texture
+        let texture_texels = Texture::create_texels(texture_size as usize);
+
+        self.renderer
+            .set_texels(context, texture_size, texture_texels);
+    }
+
+    pub fn render(&mut self, context : &mut Context, ui : &Ui, size : [f32; 2]) {
+
+        self.renderer.render(context, ui, size);
+    }
+
+    pub fn resize(&mut self, context : &mut Context, ui : &Ui, new_size : [f32; 2]) {
+
+        self.renderer.resize(context, ui, new_size);
     }
 
     pub fn renderer(&self) -> &LayerRenderer { &self.renderer }

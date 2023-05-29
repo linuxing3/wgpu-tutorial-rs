@@ -131,6 +131,12 @@ where
         camera_bind_group : &'b wgpu::BindGroup,
     ) {
 
+        // NOTE: bindings
+        // pipeline <-> buffers...
+        // texture/sampler -> fragment shader
+        // camera -> uniform buffer -> vertex/index shader
+        // vertex -> vertex buffer -> vertex shader
+        // index -> index buffer -> vertex shader
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
 
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);

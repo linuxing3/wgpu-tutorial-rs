@@ -236,19 +236,19 @@ fn main() {
 
                 {
 
-                    let size = [width as f32, height as f32];
-
                     let window = ui.window("Hello world");
 
+                    let mut new_imgui_region_size : Option<[f32; 2]> = None;
+
                     window
-                        .size([400.0, 600.0], Condition::FirstUseEver)
+                        .size([512.0, 512.0], Condition::FirstUseEver)
                         .build(|| {
 
-                            ui.text("Hello textures!");
+                            new_imgui_region_size = Some(ui.content_region_avail());
 
                             ui.text("Say hello to checker.png");
 
-                            Image::new(lenna_texture_id, size).build(ui);
+                            Image::new(lenna_texture_id, new_imgui_region_size.unwrap()).build(ui);
                         });
                 }
 

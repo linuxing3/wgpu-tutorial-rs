@@ -1,4 +1,3 @@
-
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
 use pollster::block_on;
@@ -236,14 +235,19 @@ impl State {
         queue.write_buffer(&self.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
     }
 
-    fn render(&mut self, view : &wgpu::TextureView, device : &wgpu::Device, queue : &wgpu::Queue) {
+    fn imgui_render(
+        &mut self,
+        view : &wgpu::TextureView,
+        device : &wgpu::Device,
+        queue : &wgpu::Queue,
+    ) {
 
-        let mut encoder =
+        let mut imgui_encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label : None });
 
         {
 
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut imgui_rpass = imgui_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label : None,
                 color_attachments : &[Some(wgpu::RenderPassColorAttachment {
                     view,
@@ -261,24 +265,24 @@ impl State {
                 depth_stencil_attachment : None,
             });
 
-            rpass.push_debug_group("Prepare data for draw.");
+            imgui_rpass.push_debug_group("Prepare data for draw.");
 
-            rpass.set_pipeline(&self.pipeline);
+            imgui_rpass.set_pipeline(&self.pipeline);
 
-            rpass.set_bind_group(0, &self.bind_group, &[]);
+            imgui_rpass.set_bind_group(0, &self.bind_group, &[]);
 
-            rpass.set_index_buffer(self.index_buf.slice(..), wgpu::IndexFormat::Uint16);
+            imgui_rpass.set_index_buffer(self.index_buf.slice(..), wgpu::IndexFormat::Uint16);
 
-            rpass.set_vertex_buffer(0, self.vertex_buf.slice(..));
+            imgui_rpass.set_vertex_buffer(0, self.vertex_buf.slice(..));
 
-            rpass.pop_debug_group();
+            imgui_rpass.pop_debug_group();
 
-            rpass.insert_debug_marker("Draw!");
+            imgui_rpass.insert_debug_marker("Draw!");
 
-            rpass.draw_indexed(0..self.index_count as u32, 0, 0..1);
+            imgui_rpass.draw_indexed(0..self.index_count as u32, 0, 0..1);
         }
 
-        queue.submit(Some(encoder.finish()));
+        queue.submit(Some(imgui_encoder.finish()));
     }
 }
 
@@ -409,7 +413,7 @@ fn main() {
 
     let texture = Texture::new(&device, &renderer_with_imgui, texture_config);
 
-    let example_texture_id = renderer_with_imgui.textures.insert(texture);
+    let cube_texture_id = renderer_with_imgui.textures.insert(texture);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {
@@ -485,34 +489,38 @@ fn main() {
                     .prepare_frame(imgui.io_mut(), &window)
                     .expect("Failed to prepare frame");
 
-                let imgui_frame = imgui.frame();
+                let imgui_ui = imgui.frame();
 
-                let view = main_frame
+                let main_view = main_frame
                     .texture
                     .create_view(&wgpu::TextureViewDescriptor::default());
 
                 // Render example normally at background
-                state.update(imgui_frame.io().delta_time);
+                state.update(imgui_ui.io().delta_time);
 
-                state.setup_camera(&queue, imgui_frame.io().display_size);
+                state.setup_camera(&queue, imgui_ui.io().display_size);
 
-                state.render(&view, &device, &queue);
+                // NOTE: first render default view with cube background
+                state.imgui_render(&main_view, &device, &queue);
+
+                // TODO: use imgui layer
 
                 // Store the new size of Image() or None to indicate that the window is
                 // collapsed.
                 let mut new_imgui_region_size : Option<[f32; 2]> = None;
 
-                imgui_frame
+                imgui_ui
                     .window("Cube")
                     .size([512.0, 512.0], Condition::FirstUseEver)
                     .build(|| {
 
-                        new_imgui_region_size = Some(imgui_frame.content_region_avail());
+                        new_imgui_region_size = Some(imgui_ui.content_region_avail());
 
-                        imgui::Image::new(example_texture_id, new_imgui_region_size.unwrap())
-                            .build(imgui_frame);
+                        imgui::Image::new(cube_texture_id, new_imgui_region_size.unwrap())
+                            .build(imgui_ui);
                     });
 
+                // NOTE: Draw in imgui window
                 if let Some(_size) = new_imgui_region_size {
 
                     // Resize render target, which is optional
@@ -520,7 +528,7 @@ fn main() {
 
                         imgui_region_size = _size;
 
-                        let scale = &imgui_frame.io().display_framebuffer_scale;
+                        let scale = &imgui_ui.io().display_framebuffer_scale;
 
                         let texture_config = TextureConfig {
                             size : Extent3d {
@@ -534,7 +542,7 @@ fn main() {
                         };
 
                         renderer_with_imgui.textures.replace(
-                            example_texture_id,
+                            cube_texture_id,
                             Texture::new(&device, &renderer_with_imgui, texture_config),
                         );
                     }
@@ -542,10 +550,11 @@ fn main() {
                     // Only render example to example_texture if thw window is not collapsed
                     state.setup_camera(&queue, _size);
 
-                    state.render(
+                    // NOTE: second render texture
+                    state.imgui_render(
                         renderer_with_imgui
                             .textures
-                            .get(example_texture_id)
+                            .get(cube_texture_id)
                             .unwrap()
                             .view(),
                         &device,
@@ -553,38 +562,37 @@ fn main() {
                     );
                 }
 
-                let mut command_encoder : wgpu::CommandEncoder =
+                let mut main_encoder : wgpu::CommandEncoder =
                     device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label : None });
 
-                if last_cursor != Some(imgui_frame.mouse_cursor()) {
+                if last_cursor != Some(imgui_ui.mouse_cursor()) {
 
-                    last_cursor = Some(imgui_frame.mouse_cursor());
+                    last_cursor = Some(imgui_ui.mouse_cursor());
 
-                    platform.prepare_render(imgui_frame, &window);
+                    platform.prepare_render(imgui_ui, &window);
                 }
 
-                let mut renderpass =
-                    command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label : None,
-                        color_attachments : &[Some(wgpu::RenderPassColorAttachment {
-                            view : &view,
-                            resolve_target : None,
-                            ops : wgpu::Operations {
-                                load : wgpu::LoadOp::Load, // Do not clear
-                                // load: wgpu::LoadOp::Clear(clear_color),
-                                store : true,
-                            },
-                        })],
-                        depth_stencil_attachment : None,
-                    });
+                let mut main_rpass = main_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label : None,
+                    color_attachments : &[Some(wgpu::RenderPassColorAttachment {
+                        view : &main_view,
+                        resolve_target : None,
+                        ops : wgpu::Operations {
+                            load : wgpu::LoadOp::Load, // Do not clear
+                            // load: wgpu::LoadOp::Clear(clear_color),
+                            store : true,
+                        },
+                    })],
+                    depth_stencil_attachment : None,
+                });
 
                 renderer_with_imgui
-                    .render(imgui.render(), &queue, &device, &mut renderpass)
+                    .render(imgui.render(), &queue, &device, &mut main_rpass)
                     .expect("Rendering failed");
 
-                drop(renderpass);
+                drop(main_rpass);
 
-                queue.submit(Some(command_encoder.finish()));
+                queue.submit(Some(main_encoder.finish()));
 
                 main_frame.present();
             }

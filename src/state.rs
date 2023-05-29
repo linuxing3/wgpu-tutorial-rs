@@ -1,6 +1,8 @@
 extern crate imgui_winit_support;
 
 use cgmath::prelude::*;
+use wgpu::BindingResource::TextureView;
+use wgpu::BufferUsages;
 
 use crate::camera::*;
 use crate::layer::Layer;
@@ -8,14 +10,13 @@ use crate::model::Model;
 use crate::resource;
 use crate::share::*;
 use crate::texture;
+use wgpu::util::DeviceExt;
 
 use std::time::Instant;
 use winit::{event::WindowEvent, window::Window};
 
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig};
-
-use wgpu::util::DeviceExt;
 
 pub struct State {
     pub surface : wgpu::Surface,
@@ -27,10 +28,6 @@ pub struct State {
 
     // Pipeline
     pub render_pipeline : wgpu::RenderPipeline,
-    // pub vertex_buffer : wgpu::Buffer,
-    // pub index_buffer : wgpu::Buffer,
-    // num_vertices : u32,
-    // pub num_indices : u32,
 
     // texture
     pub diffuse_bind_group : wgpu::BindGroup,
@@ -61,6 +58,23 @@ pub struct State {
 
     // layers
     pub layers : Vec<Layer>,
+}
+
+impl State {
+    fn generate_matrix(aspect_ratio : f32) -> cgmath::Matrix4<f32> {
+
+        let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
+
+        let mx_view = cgmath::Matrix4::look_at_rh(
+            cgmath::Point3::new(1.5f32, -5.0, 3.0),
+            cgmath::Point3::new(0f32, 0.0, 0.0),
+            cgmath::Vector3::unit_z(),
+        );
+
+        let mx_correction = OPENGL_TO_WGPU_MATRIX;
+
+        mx_correction * mx_projection * mx_view
+    }
 }
 
 impl State {
@@ -162,7 +176,7 @@ impl State {
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label : Some("Camera Buffer"),
             contents : bytemuck::cast_slice(&[camera_uniform]),
-            usage : wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            usage : BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
         // @group(1) @binding(0) camera
@@ -279,7 +293,7 @@ impl State {
             entries : &[
                 wgpu::BindGroupEntry {
                     binding : 0,
-                    resource : wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                    resource : TextureView(&diffuse_texture.view),
                 },
                 wgpu::BindGroupEntry {
                     binding : 1,
@@ -292,8 +306,6 @@ impl State {
         // depth_texture
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
-
-        // NOTE: Normal triangle render stuff
 
         // TODO: render_pipeline
         let shader =
@@ -355,7 +367,7 @@ impl State {
             multiview : None, // 5.
         });
 
-        // NOTE: vertex buffer
+        // HACK: vertex buffer
 
         // let vertex_buffer_desc = &wgpu::util::BufferInitDescriptor {
         //     label : Some("Vertex Buffer"),
@@ -365,7 +377,8 @@ impl State {
         //
         // let vertex_buffer = device.create_buffer_init(vertex_buffer_desc);
         //
-        // // NOTE: index buffer
+        // HACK: index buffer
+
         // let index_buffer_desc = &wgpu::util::BufferInitDescriptor {
         //     label : Some("Index Buffer"),
         //     contents : bytemuck::cast_slice(INDICES),
@@ -381,9 +394,10 @@ impl State {
 
         let mut layers = vec![];
 
-        let happy_bytes = include_bytes!("../assets/images/happy-tree.png");
-
-        let x_layer = crate::layer::Layer::new(&mut layer_context, happy_bytes);
+        let x_layer = Layer::new(
+            &mut layer_context,
+            include_bytes!("../assets/images/happy-tree.png"),
+        );
 
         layers.push(x_layer);
 
@@ -433,7 +447,7 @@ impl State {
         let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label : Some("Instance Buffer"),
             contents : bytemuck::cast_slice(&instance_data),
-            usage : wgpu::BufferUsages::VERTEX,
+            usage : BufferUsages::VERTEX,
         });
 
         let obj_model =
@@ -497,6 +511,14 @@ impl State {
 
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+
+            // TODO:
+
+            let texture_context = &mut texture::Context {
+                device : &self.device,
+                queue : &self.queue,
+                renderer : &mut self.renderer,
+            };
         }
     }
 
@@ -523,13 +545,6 @@ impl State {
         );
     }
 
-    pub fn imgui_frame(&mut self) -> &mut imgui::Ui {
-
-        let imgui_frame = self.imgui_context.frame();
-
-        imgui_frame
-    }
-
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
 
         // NOTE: imgui timer
@@ -551,7 +566,7 @@ impl State {
             .prepare_frame(io, &self.window)
             .expect("Failed to prepare frame");
 
-        let imgui_frame = self.imgui_context.frame();
+        let imgui_ui = self.imgui_context.frame();
 
         // NOTE: prepare imgui layers
 
@@ -561,37 +576,37 @@ impl State {
             renderer : &mut self.renderer,
         };
 
+        // self.imgui_render(texture_context, &mut imgui_ui);
+
         for layer in &mut self.layers {
 
-            let imgui_region_size = layer.renderer.size.unwrap();
-
-            if let Some(window) = imgui_frame
+            if let Some(window) = imgui_ui
                 .window("Gallery")
-                .size(imgui_region_size, imgui::Condition::FirstUseEver)
+                .size([512.0, 512.0], imgui::Condition::FirstUseEver)
                 .begin()
             {
 
-                let new_imgui_region_size = Some(imgui_frame.content_region_avail());
+                let new_imgui_region_size = imgui_ui.content_region_avail();
 
-                layer.render(texture_context, &imgui_frame, new_imgui_region_size);
+                layer.render(texture_context, &imgui_ui, new_imgui_region_size);
 
                 window.end();
             };
         }
 
         // NOTE: prepare render
-        if self.last_cursor != imgui_frame.mouse_cursor() {
+        if self.last_cursor != imgui_ui.mouse_cursor() {
 
-            self.last_cursor = imgui_frame.mouse_cursor();
+            self.last_cursor = imgui_ui.mouse_cursor();
 
-            self.platform.prepare_render(imgui_frame, &self.window);
+            self.platform.prepare_render(&imgui_ui, &self.window);
         }
 
         let main_view = main_frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut command_encoder =
+        let mut main_encoder =
             self.device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                     label : Some("Render Encoder"),
@@ -600,7 +615,7 @@ impl State {
         // Render pass scope
         {
 
-            let mut render_pass = command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let mut main_rpass = main_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label : Some("Render Pass"),
                 color_attachments : &[Some(wgpu::RenderPassColorAttachment {
                     view : &main_view,
@@ -621,32 +636,9 @@ impl State {
                 // }),
             });
 
-            // NOTE: bindings
-            // pipeline <-> buffers...
-            // texture/sampler -> fragment shader
-            // camera -> uniform buffer -> vertex/index shader
-            // vertex -> vertex buffer -> vertex shader
-            // index -> index buffer -> vertex shader
+            main_rpass.set_vertex_buffer(1, self.instance_buffer.slice(..)); //NOTE: more instances
 
-            render_pass.set_pipeline(&self.render_pipeline); // 2.
-
-            //group 0, binding 0 texture
-            //group 0, binding 1 sampler
-            // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]); // NOTE:
-            // texture with pipeline
-
-            // group 1, binding 0 camera_uniform
-            // render_pass.set_bind_group(1, &self.camera_bind_group, &[]); // NOTE: camera
-            // with 3D effect
-
-            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..)); //NOTE:
-            // vertex cached with uniform 3d effect
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..)); //NOTE: more instances
-
-            // render_pass.set_index_buffer(self.index_buffer.slice(..),
-            // wgpu::IndexFormat::Uint16); // NOTE: index cached
-
-            render_pass.set_pipeline(&self.render_pipeline);
+            main_rpass.set_pipeline(&self.render_pipeline);
 
             use crate::model::DrawModel;
 
@@ -654,23 +646,12 @@ impl State {
 
             let material = &self.obj_model.materials[mesh.material];
 
-            render_pass.draw_mesh_instanced(
+            main_rpass.draw_mesh_instanced(
                 mesh,
                 material,
                 0..self.instances.len() as u32,
                 &self.camera_bind_group,
             );
-
-            // NOTE: draw shapes from pipeline on surface
-
-            // render_pass.draw_indexed(0..self.num_indices, 0, 0..1); // 3.NOTE: more
-            // parameter than draw method
-            // render_pass.draw_indexed(0..self.num_indices, 0, 0..self.instances.len() as
-            // _); // 3.NOTE: more parameter than draw method
-
-            // use model::DrawModel;
-            // render_pass.draw_mesh_instanced(&self.obj_model.meshes[0],
-            // 0..self.instances.len() as u32);
 
             // NOTE: render imgui
 
@@ -679,15 +660,13 @@ impl State {
                     self.imgui_context.render(),
                     &self.queue,
                     &self.device,
-                    &mut render_pass,
+                    &mut main_rpass,
                 )
                 .expect("Render imgui failed");
-
-            drop(render_pass);
         }
 
         // NOTE: submit will accept anything that implements IntoIter
-        self.queue.submit(std::iter::once(command_encoder.finish()));
+        self.queue.submit(std::iter::once(main_encoder.finish()));
 
         main_frame.present();
 

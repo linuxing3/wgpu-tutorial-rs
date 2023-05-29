@@ -10,8 +10,8 @@ use winit::{
     window::Window,
 };
 
-use wgpu_tutorial_rs::share::create_cube_texels;
 use wgpu_tutorial_rs::swapchain::Swapchain;
+use wgpu_tutorial_rs::texture::Context;
 use wgpu_tutorial_rs::{gpu::Gpu, imgui_layer::Layer};
 
 struct State {
@@ -142,16 +142,6 @@ fn main() {
         }),
     }]);
 
-    //
-    // Set up dear imgui wgpu renderer
-    //
-    // let clear_color = wgpu::Color {
-    //     r: 0.1,
-    //     g: 0.2,
-    //     b: 0.3,
-    //     a: 1.0,
-    // };
-
     let renderer_config = RendererConfig {
         texture_format : gpu.surface_desc.format,
         ..Default::default()
@@ -185,7 +175,7 @@ fn main() {
 
     let example_texture_id = renderer_with_imgui.textures.insert(texture);
 
-    // imgui layers
+    // HACK: imgui layers
     let mut layers : Vec<Layer> = vec![];
 
     let x_layer = Layer::new(example_texture_id, [256.0, 256.0]);
@@ -247,32 +237,19 @@ fn main() {
             Event::MainEventsCleared => window.request_redraw(),
             Event::RedrawEventsCleared => {
 
+                // --------------------------------------------------------------------
+                // HACK: imgui io - imgui-winit-support platform - winit window
                 let now = Instant::now();
 
                 imgui.io_mut().update_delta_time(now - last_frame);
 
                 last_frame = now;
 
-                let main_frame = match surface.get_current_texture() {
-                    Ok(frame) => frame,
-                    Err(e) => {
-
-                        eprintln!("dropped frame: {e:?}");
-
-                        return;
-                    }
-                };
-
-                // TIP: imgui io - imgui-winit-support platform - winit window
                 platform
                     .prepare_frame(imgui.io_mut(), &window)
                     .expect("Failed to prepare frame");
 
                 let imgui_frame = imgui.frame();
-
-                let view = main_frame
-                    .texture
-                    .create_view(&wgpu::TextureViewDescriptor::default());
 
                 // Render example normally at background
                 state.swapchain.update(imgui_frame.io().delta_time);
@@ -281,14 +258,9 @@ fn main() {
                     .swapchain
                     .setup_camera(&gpu.queue, imgui_frame.io().display_size);
 
-                state.render(&view, &gpu.device, &gpu.queue);
-
-                // Store the new size of Image() or None to indicate that the window is
-                // collapsed.
-
                 for layer in &mut layers {
 
-                    let texture_context = &mut wgpu_tutorial_rs::texture::Context {
+                    let texture_context = &mut Context {
                         device : &gpu.device,
                         queue : &gpu.queue,
                         renderer : &mut renderer_with_imgui,
@@ -319,61 +291,6 @@ fn main() {
                     }
                 }
 
-                // imgui_frame
-                //     .window("Cube")
-                //     .size([512.0, 512.0], Condition::FirstUseEver)
-                //     .build(|| {
-                //
-                //         new_imgui_region_size = Some(imgui_frame.content_region_avail());
-                //
-                //         imgui::Image::new(example_texture_id, new_imgui_region_size.unwrap())
-                //             .build(imgui_frame);
-                //     });
-
-                // if let Some(_size) = new_imgui_region_size {
-                //
-                //     // Resize render target, which is optional
-                //     if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
-                //
-                //         imgui_region_size = _size;
-                //
-                //         let scale = &imgui_frame.io().display_framebuffer_scale;
-                //
-                //         let texture_config = TextureConfig {
-                //             size : wgpu::Extent3d {
-                //                 width : (imgui_region_size[0] * scale[0]) as u32,
-                //                 height : (imgui_region_size[1] * scale[1]) as u32,
-                //                 ..Default::default()
-                //             },
-                //             usage : wgpu::TextureUsages::RENDER_ATTACHMENT
-                //                 | wgpu::TextureUsages::TEXTURE_BINDING,
-                //             ..Default::default()
-                //         };
-                //
-                //         renderer_with_imgui.textures.replace(
-                //             example_texture_id,
-                //             Texture::new(&gpu.device, &renderer_with_imgui, texture_config),
-                //         );
-                //     }
-                //
-                //     // Only render example to example_texture if thw window is not collapsed
-                //     state.swapchain.setup_camera(&gpu.queue, _size);
-                //
-                //     state.render(
-                //         renderer_with_imgui
-                //             .textures
-                //             .get(example_texture_id)
-                //             .unwrap()
-                //             .view(),
-                //         &gpu.device,
-                //         &gpu.queue,
-                //     );
-                // }
-
-                let mut command_encoder : wgpu::CommandEncoder = gpu
-                    .device
-                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label : None });
-
                 if last_cursor != Some(imgui_frame.mouse_cursor()) {
 
                     last_cursor = Some(imgui_frame.mouse_cursor());
@@ -381,7 +298,26 @@ fn main() {
                     platform.prepare_render(imgui_frame, &window);
                 }
 
-                // NOTE: render
+                // --------------------------------------------------------------------
+                // NOTE: render all
+                let main_frame = match surface.get_current_texture() {
+                    Ok(frame) => frame,
+                    Err(e) => {
+
+                        eprintln!("dropped frame: {e:?}");
+
+                        return;
+                    }
+                };
+
+                let view = main_frame
+                    .texture
+                    .create_view(&wgpu::TextureViewDescriptor::default());
+
+                let mut command_encoder : wgpu::CommandEncoder = gpu
+                    .device
+                    .create_command_encoder(&wgpu::CommandEncoderDescriptor { label : None });
+
                 let mut renderpass =
                     command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label : None,
@@ -402,6 +338,9 @@ fn main() {
                     .expect("Rendering failed");
 
                 drop(renderpass);
+
+                // NOTE: render background image
+                state.render(&view, &gpu.device, &gpu.queue);
 
                 gpu.queue.submit(Some(command_encoder.finish()));
 

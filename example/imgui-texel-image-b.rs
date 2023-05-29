@@ -3,7 +3,6 @@ use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
 use imgui_winit_support::WinitPlatform;
 
 use std::time::Instant;
-use wgpu::Extent3d;
 use winit::{
     dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -11,8 +10,9 @@ use winit::{
     window::Window,
 };
 
-use wgpu_tutorial_rs::gpu::Gpu;
+use wgpu_tutorial_rs::share::create_cube_texels;
 use wgpu_tutorial_rs::swapchain::Swapchain;
+use wgpu_tutorial_rs::{gpu::Gpu, imgui_layer::Layer};
 
 struct State {
     swapchain : Swapchain,
@@ -185,6 +185,13 @@ fn main() {
 
     let example_texture_id = renderer_with_imgui.textures.insert(texture);
 
+    // imgui layers
+    let mut layers : Vec<Layer> = vec![];
+
+    let x_layer = Layer::new(example_texture_id, [256.0, 256.0]);
+
+    layers.push(x_layer);
+
     // Event loop
     event_loop.run(move |event, _, control_flow| {
 
@@ -278,58 +285,90 @@ fn main() {
 
                 // Store the new size of Image() or None to indicate that the window is
                 // collapsed.
-                let mut new_imgui_region_size : Option<[f32; 2]> = None;
 
-                imgui_frame
-                    .window("Cube")
-                    .size([512.0, 512.0], Condition::FirstUseEver)
-                    .build(|| {
+                for layer in &mut layers {
 
-                        new_imgui_region_size = Some(imgui_frame.content_region_avail());
+                    let texture_context = &mut wgpu_tutorial_rs::texture::Context {
+                        device : &gpu.device,
+                        queue : &gpu.queue,
+                        renderer : &mut renderer_with_imgui,
+                    };
 
-                        imgui::Image::new(example_texture_id, new_imgui_region_size.unwrap())
-                            .build(imgui_frame);
-                    });
+                    layer.render(texture_context, imgui_frame);
 
-                if let Some(_size) = new_imgui_region_size {
+                    if let Some(_size) = layer.size() {
 
-                    // Resize render target, which is optional
-                    if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
+                        // Resize render target, which is optional
+                        if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
 
-                        imgui_region_size = _size;
+                            imgui_region_size = _size;
 
-                        let scale = &imgui_frame.io().display_framebuffer_scale;
+                            layer.resize(texture_context, imgui_frame, imgui_region_size);
+                        }
 
-                        let texture_config = TextureConfig {
-                            size : Extent3d {
-                                width : (imgui_region_size[0] * scale[0]) as u32,
-                                height : (imgui_region_size[1] * scale[1]) as u32,
-                                ..Default::default()
-                            },
-                            usage : wgpu::TextureUsages::RENDER_ATTACHMENT
-                                | wgpu::TextureUsages::TEXTURE_BINDING,
-                            ..Default::default()
-                        };
+                        // Only render example to example_texture if thw window is not collapsed
+                        state.swapchain.setup_camera(&gpu.queue, _size);
 
-                        renderer_with_imgui.textures.replace(
-                            example_texture_id,
-                            Texture::new(&gpu.device, &renderer_with_imgui, texture_config),
-                        );
-                    }
-
-                    // Only render example to example_texture if thw window is not collapsed
-                    state.swapchain.setup_camera(&gpu.queue, _size);
-
-                    state.render(
-                        renderer_with_imgui
+                        let view = renderer_with_imgui
                             .textures
                             .get(example_texture_id)
                             .unwrap()
-                            .view(),
-                        &gpu.device,
-                        &gpu.queue,
-                    );
+                            .view();
+
+                        state.render(view, &gpu.device, &gpu.queue);
+                    }
                 }
+
+                // imgui_frame
+                //     .window("Cube")
+                //     .size([512.0, 512.0], Condition::FirstUseEver)
+                //     .build(|| {
+                //
+                //         new_imgui_region_size = Some(imgui_frame.content_region_avail());
+                //
+                //         imgui::Image::new(example_texture_id, new_imgui_region_size.unwrap())
+                //             .build(imgui_frame);
+                //     });
+
+                // if let Some(_size) = new_imgui_region_size {
+                //
+                //     // Resize render target, which is optional
+                //     if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
+                //
+                //         imgui_region_size = _size;
+                //
+                //         let scale = &imgui_frame.io().display_framebuffer_scale;
+                //
+                //         let texture_config = TextureConfig {
+                //             size : wgpu::Extent3d {
+                //                 width : (imgui_region_size[0] * scale[0]) as u32,
+                //                 height : (imgui_region_size[1] * scale[1]) as u32,
+                //                 ..Default::default()
+                //             },
+                //             usage : wgpu::TextureUsages::RENDER_ATTACHMENT
+                //                 | wgpu::TextureUsages::TEXTURE_BINDING,
+                //             ..Default::default()
+                //         };
+                //
+                //         renderer_with_imgui.textures.replace(
+                //             example_texture_id,
+                //             Texture::new(&gpu.device, &renderer_with_imgui, texture_config),
+                //         );
+                //     }
+                //
+                //     // Only render example to example_texture if thw window is not collapsed
+                //     state.swapchain.setup_camera(&gpu.queue, _size);
+                //
+                //     state.render(
+                //         renderer_with_imgui
+                //             .textures
+                //             .get(example_texture_id)
+                //             .unwrap()
+                //             .view(),
+                //         &gpu.device,
+                //         &gpu.queue,
+                //     );
+                // }
 
                 let mut command_encoder : wgpu::CommandEncoder = gpu
                     .device

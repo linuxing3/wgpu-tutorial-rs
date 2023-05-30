@@ -1,4 +1,7 @@
-use crate::camera::{Camera, CameraController, CameraUniform};
+use crate::{
+    camera::{Camera, CameraController, CameraUniform},
+    texture,
+};
 use std::mem;
 use wgpu::{include_wgsl, util::DeviceExt, BufferUsages};
 use winit::event::WindowEvent;
@@ -9,7 +12,8 @@ pub struct Swapchain {
     pub vertex_buf : wgpu::Buffer,
     pub index_buf : wgpu::Buffer,
     pub index_count : usize,
-    pub bind_group : wgpu::BindGroup,
+    pub camera_bind_group : wgpu::BindGroup,
+    pub texture_bind_group : wgpu::BindGroup,
     pub pipeline : wgpu::RenderPipeline,
     // camera
     pub uniform_buf : wgpu::Buffer,
@@ -60,14 +64,16 @@ impl Swapchain {
             depth_or_array_layers : 1,
         };
 
-        let (_, cube_texture_view) = Self::configure_texture(
-            device,
-            queue,
-            texture_size,
-            texture_texels,
-            cube_texture_extent,
-        );
+        let (_, cube_texture_view, cube_texture_sampler) =
+            Self::configure_texture_from_image(device, queue);
 
+        // let (_, cube_texture_view, cube_texture_sampler) = Self::configure_texture(
+        //     device,
+        //     queue,
+        //     texture_size,
+        //     texture_texels,
+        //     cube_texture_extent,
+        // );
         // uniform
 
         let time = 0.0;
@@ -96,18 +102,26 @@ impl Swapchain {
             usage : BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
 
-        let (bind_group, bind_group_layout) =
-            Self::configure_bind_group(device, &uniform_buf, &cube_texture_view);
+        let (camera_bind_group, camera_bind_group_layout) =
+            Self::configure_camera_bind_group(device, &uniform_buf);
+
+        let (texture_bind_group, texture_bind_group_layout) =
+            Self::configure_texture_bind_group(device, &cube_texture_view, &cube_texture_sampler);
 
         // pipeline
-        let pipeline = Self::configure_pipeline(config, device, &bind_group_layout);
+        let pipeline = Self::configure_pipeline_with_model(
+            config,
+            device,
+            &[&camera_bind_group_layout, &texture_bind_group_layout],
+        );
 
         // Done
         Swapchain {
             vertex_buf,
             index_buf,
             index_count,
-            bind_group,
+            camera_bind_group,
+            texture_bind_group,
             uniform_buf,
             camera,
             camera_uniform,
@@ -140,13 +154,69 @@ impl Swapchain {
         (vertex_buf, index_buf)
     }
 
+    fn configure_texture_from_image(
+        device : &wgpu::Device,
+        queue : &wgpu::Queue,
+    ) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
+
+        let bytes = include_bytes!("../assets/images/happy-tree.png");
+
+        let img = image::load_from_memory(bytes).unwrap();
+
+        let rgba = img.to_rgba8();
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label : Some("texture"),
+            size : wgpu::Extent3d {
+                width : img.width(),
+                height : img.height(),
+                depth_or_array_layers : 1,
+            },
+            mip_level_count : 1,
+            sample_count : 1,
+            dimension : wgpu::TextureDimension::D2,
+            format : wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage : wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats : &[],
+        });
+
+        queue.write_texture(
+            texture.as_image_copy(),
+            &rgba,
+            wgpu::ImageDataLayout {
+                offset : 0,
+                bytes_per_row : std::num::NonZeroU32::new(4 * img.width()),
+                rows_per_image : std::num::NonZeroU32::new(img.height()),
+            },
+            wgpu::Extent3d {
+                width : img.width(),
+                height : img.height(),
+                depth_or_array_layers : 1,
+            },
+        );
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u : wgpu::AddressMode::ClampToEdge,
+            address_mode_v : wgpu::AddressMode::ClampToEdge,
+            address_mode_w : wgpu::AddressMode::ClampToEdge,
+            mag_filter : wgpu::FilterMode::Linear,
+            min_filter : wgpu::FilterMode::Nearest,
+            mipmap_filter : wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        (texture, texture_view, texture_sampler)
+    }
+
     fn configure_texture(
         device : &wgpu::Device,
         queue : &wgpu::Queue,
         texture_size : u32,
         texture_texels : Vec<u8>,
         cube_texture_extent : wgpu::Extent3d,
-    ) -> (wgpu::Texture, wgpu::TextureView) {
+    ) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
 
         let cube_texture = device.create_texture(&wgpu::TextureDescriptor {
             label : None,
@@ -161,6 +231,19 @@ impl Swapchain {
 
         let cube_texture_view = cube_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
+        let cube_texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u : wgpu::AddressMode::ClampToEdge,
+            address_mode_v : wgpu::AddressMode::ClampToEdge,
+            address_mode_w : wgpu::AddressMode::ClampToEdge,
+            mag_filter : wgpu::FilterMode::Linear,
+            min_filter : wgpu::FilterMode::Linear,
+            mipmap_filter : wgpu::FilterMode::Nearest,
+            compare : Some(wgpu::CompareFunction::LessEqual),
+            lod_min_clamp : 0.0,
+            lod_max_clamp : 100.0,
+            ..Default::default()
+        });
+
         queue.write_texture(
             cube_texture.as_image_copy(),
             &texture_texels,
@@ -172,7 +255,7 @@ impl Swapchain {
             cube_texture_extent,
         );
 
-        (cube_texture, cube_texture_view)
+        (cube_texture, cube_texture_view, cube_texture_sampler)
     }
 
     pub fn handle_input(&mut self, event : &WindowEvent) -> bool {
@@ -180,17 +263,15 @@ impl Swapchain {
         self.camera_controller.process_events(event)
     }
 
-    fn configure_bind_group(
+    fn configure_camera_bind_group(
         device : &wgpu::Device,
         uniform_buf : &wgpu::Buffer,
-        cube_texture_view : &wgpu::TextureView,
     ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
 
-        // Create pipeline layout
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label : None,
-            entries : &[
-                wgpu::BindGroupLayoutEntry {
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label : None,
+                entries : &[wgpu::BindGroupLayoutEntry {
                     binding : 0,
                     visibility : wgpu::ShaderStages::VERTEX,
                     ty : wgpu::BindingType::Buffer {
@@ -199,43 +280,74 @@ impl Swapchain {
                         min_binding_size : wgpu::BufferSize::new(64),
                     },
                     count : None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding : 1,
-                    visibility : wgpu::ShaderStages::FRAGMENT,
-                    ty : wgpu::BindingType::Texture {
-                        multisampled : false,
-                        sample_type : wgpu::TextureSampleType::Uint,
-                        view_dimension : wgpu::TextureViewDimension::D2,
-                    },
-                    count : None,
-                },
-            ],
-        });
+                }],
+            });
 
         // Create bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout : &bind_group_layout,
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout : &camera_bind_group_layout,
+            entries : &[wgpu::BindGroupEntry {
+                binding : 0,
+                resource : uniform_buf.as_entire_binding(),
+            }],
+            label : None,
+        });
+
+        (camera_bind_group, camera_bind_group_layout)
+    }
+
+    fn configure_texture_bind_group(
+        device : &wgpu::Device,
+        cube_texture_view : &wgpu::TextureView,
+        cube_texture_sampler : &wgpu::Sampler,
+    ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
+
+        // Create pipeline layout
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label : None,
+                entries : &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding : 0,
+                        visibility : wgpu::ShaderStages::FRAGMENT,
+                        ty : wgpu::BindingType::Texture {
+                            multisampled : false,
+                            view_dimension : wgpu::TextureViewDimension::D2,
+                            sample_type : wgpu::TextureSampleType::Float { filterable : true },
+                        },
+                        count : None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding : 1,
+                        visibility : wgpu::ShaderStages::FRAGMENT,
+                        ty : wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count : None,
+                    },
+                ],
+            });
+
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout : &texture_bind_group_layout,
             entries : &[
                 wgpu::BindGroupEntry {
                     binding : 0,
-                    resource : uniform_buf.as_entire_binding(),
+                    resource : wgpu::BindingResource::TextureView(&cube_texture_view),
                 },
                 wgpu::BindGroupEntry {
                     binding : 1,
-                    resource : wgpu::BindingResource::TextureView(&cube_texture_view),
+                    resource : wgpu::BindingResource::Sampler(&cube_texture_sampler),
                 },
             ],
             label : None,
         });
 
-        (bind_group, bind_group_layout)
+        (texture_bind_group, texture_bind_group_layout)
     }
 
-    fn configure_pipeline(
+    fn configure_pipeline_with_model(
         config : &wgpu::SurfaceConfiguration,
         device : &wgpu::Device,
-        bind_group_layout : &wgpu::BindGroupLayout,
+        bind_group_layouts : &[&wgpu::BindGroupLayout],
     ) -> wgpu::RenderPipeline {
 
         // Create the vertex and index buffers
@@ -243,7 +355,7 @@ impl Swapchain {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label : None,
-            bind_group_layouts : &[&bind_group_layout],
+            bind_group_layouts,
             push_constant_ranges : &[],
         });
 
@@ -277,6 +389,65 @@ impl Swapchain {
             fragment : Some(wgpu::FragmentState {
                 module : &shader,
                 entry_point : "fs_main",
+                targets : &[Some(config.format.into())],
+            }),
+            primitive : wgpu::PrimitiveState {
+                cull_mode : Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil : None,
+            multisample : wgpu::MultisampleState::default(),
+            multiview : None,
+        });
+
+        pipeline
+    }
+
+    fn configure_pipeline(
+        config : &wgpu::SurfaceConfiguration,
+        device : &wgpu::Device,
+        bind_group_layouts : &[&wgpu::BindGroupLayout],
+    ) -> wgpu::RenderPipeline {
+
+        // Create the vertex and index buffers
+        let vertex_size = mem::size_of::<ImVertex>();
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label : None,
+            bind_group_layouts,
+            push_constant_ranges : &[],
+        });
+
+        let shader = device.create_shader_module(include_wgsl!("../assets/shaders/cube.wgsl"));
+
+        let vertex_buffers = [wgpu::VertexBufferLayout {
+            array_stride : vertex_size as wgpu::BufferAddress,
+            step_mode : wgpu::VertexStepMode::Vertex,
+            attributes : &[
+                wgpu::VertexAttribute {
+                    format : wgpu::VertexFormat::Float32x4,
+                    offset : 0,
+                    shader_location : 0,
+                },
+                wgpu::VertexAttribute {
+                    format : wgpu::VertexFormat::Float32x2,
+                    offset : 4 * 4,
+                    shader_location : 1,
+                },
+            ],
+        }];
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label : None,
+            layout : Some(&pipeline_layout),
+            vertex : wgpu::VertexState {
+                module : &shader,
+                entry_point : "vs_main_cube",
+                buffers : &vertex_buffers,
+            },
+            fragment : Some(wgpu::FragmentState {
+                module : &shader,
+                entry_point : "fs_main_cube",
                 targets : &[Some(config.format.into())],
             }),
             primitive : wgpu::PrimitiveState {

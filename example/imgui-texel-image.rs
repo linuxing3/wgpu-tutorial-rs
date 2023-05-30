@@ -38,7 +38,9 @@ impl State {
 
         rpass.set_pipeline(&self.swapchain.pipeline);
 
-        rpass.set_bind_group(0, &self.swapchain.bind_group, &[]);
+        rpass.set_bind_group(0, &self.swapchain.camera_bind_group, &[]);
+
+        rpass.set_bind_group(1, &self.swapchain.texture_bind_group, &[]);
 
         rpass.set_index_buffer(
             self.swapchain.index_buf.slice(..),

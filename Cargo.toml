@@ -62,6 +62,3 @@ path = "example/imgui-image-file.rs"
 [[bin]]
 name = "03"
 path = "example/imgui-texel-image.rs"
-[[bin]]
-name = "04"
-path = "example/imgui-texel-image-b.rs"

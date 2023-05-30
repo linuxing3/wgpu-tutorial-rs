@@ -5,7 +5,7 @@ use wgpu::BindingResource::TextureView;
 use wgpu::BufferUsages;
 
 use crate::camera::*;
-use crate::layer::Layer;
+use crate::imgui_layer::Layer;
 use crate::model::Model;
 use crate::resource;
 use crate::share::*;
@@ -394,13 +394,6 @@ impl State {
 
         let mut layers = vec![];
 
-        let x_layer = Layer::new(
-            &mut layer_context,
-            include_bytes!("../assets/images/happy-tree.png"),
-        );
-
-        layers.push(x_layer);
-
         // ---------------------------------------------------------------------------------
 
         // NOTE: for window event detection, updating imgui state, etc
@@ -570,7 +563,7 @@ impl State {
 
         // NOTE: prepare imgui layers
 
-        let texture_context = &mut texture::Context {
+        let _texture_context = &mut texture::Context {
             device : &self.device,
             queue : &self.queue,
             renderer : &mut self.renderer,
@@ -578,7 +571,7 @@ impl State {
 
         // self.imgui_render(texture_context, &mut imgui_ui);
 
-        for layer in &mut self.layers {
+        for _layer in &mut self.layers {
 
             if let Some(window) = imgui_ui
                 .window("Gallery")
@@ -586,9 +579,7 @@ impl State {
                 .begin()
             {
 
-                let new_imgui_region_size = imgui_ui.content_region_avail();
-
-                layer.render(texture_context, &imgui_ui, new_imgui_region_size);
+                let _new_imgui_region_size = imgui_ui.content_region_avail();
 
                 window.end();
             };

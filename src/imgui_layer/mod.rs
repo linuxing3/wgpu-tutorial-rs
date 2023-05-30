@@ -17,6 +17,10 @@ impl Layer {
 
     pub fn size(&mut self) -> Option<[f32; 2]> { self.size }
 
+    pub fn set_size(&mut self, size : u32) { self.size = Some([size as f32, size as f32]); }
+
+    pub fn id(&mut self) -> TextureId { self.texture_id }
+
     pub fn set_bytes(&mut self, context : &mut Context, bytes : &[u8]) {
 
         println!("Got source, setting texture from file");

@@ -1,6 +1,7 @@
 use imgui::*;
 use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
 use imgui_winit_support::WinitPlatform;
+use pollster::block_on;
 
 use std::time::Instant;
 use winit::{
@@ -80,7 +81,7 @@ impl State {
     }
 }
 
-fn main() {
+async fn run() {
 
     env_logger::init();
 
@@ -250,14 +251,14 @@ fn main() {
                     .prepare_frame(imgui.io_mut(), &window)
                     .expect("Failed to prepare frame");
 
-                let imgui_frame = imgui.frame();
+                let ui = imgui.frame();
 
                 // Render example normally at background
-                state.swapchain.update(imgui_frame.io().delta_time);
+                state.swapchain.update(ui.io().delta_time);
 
                 state
                     .swapchain
-                    .setup_camera(&gpu.queue, imgui_frame.io().display_size);
+                    .setup_camera(&gpu.queue, ui.io().display_size);
 
                 for layer in &mut layers {
 
@@ -267,20 +268,24 @@ fn main() {
                         renderer : &mut renderer_with_imgui,
                     };
 
-                    layer.render(texture_context, imgui_frame);
+                    layer.render(texture_context, ui);
 
-                    if let Some(_size) = layer.size() {
+                    if let Some(new_imgui_region_size) = layer.size() {
 
                         // Resize render target, which is optional
-                        if _size != imgui_region_size && _size[0] >= 1.0 && _size[1] >= 1.0 {
+                        if new_imgui_region_size != imgui_region_size
+                            && new_imgui_region_size[0] >= 1.0
+                            && new_imgui_region_size[1] >= 1.0
+                        {
 
-                            imgui_region_size = _size;
+                            imgui_region_size = new_imgui_region_size;
 
-                            layer.resize(texture_context, imgui_frame, imgui_region_size);
+                            layer.resize(texture_context, ui, imgui_region_size);
                         }
 
-                        // Only render example to example_texture if thw window is not collapsed
-                        state.swapchain.setup_camera(&gpu.queue, _size);
+                        state
+                            .swapchain
+                            .setup_camera(&gpu.queue, new_imgui_region_size);
 
                         let view = renderer_with_imgui
                             .textures
@@ -292,11 +297,11 @@ fn main() {
                     }
                 }
 
-                if last_cursor != Some(imgui_frame.mouse_cursor()) {
+                if last_cursor != Some(ui.mouse_cursor()) {
 
-                    last_cursor = Some(imgui_frame.mouse_cursor());
+                    last_cursor = Some(ui.mouse_cursor());
 
-                    platform.prepare_render(imgui_frame, &window);
+                    platform.prepare_render(ui, &window);
                 }
 
                 // --------------------------------------------------------------------
@@ -353,3 +358,5 @@ fn main() {
         platform.handle_event(imgui.io_mut(), &window, &event);
     });
 }
+
+fn main() { block_on(run()); }

@@ -186,31 +186,6 @@ impl Swapchain {
         cube_texture_view : &wgpu::TextureView,
     ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
 
-        // @group(1) @binding(0) camera
-        // let camera_bind_group_layout =
-        //     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        //         entries : &[wgpu::BindGroupLayoutEntry {
-        //             binding : 0,
-        //             visibility : wgpu::ShaderStages::VERTEX,
-        //             ty : wgpu::BindingType::Buffer {
-        //                 ty : wgpu::BufferBindingType::Uniform,
-        //                 has_dynamic_offset : false,
-        //                 min_binding_size : None,
-        //             },
-        //             count : None,
-        //         }],
-        //         label : Some("camera_bind_group_layout"),
-        //     });
-        //
-        // let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        //     layout : &camera_bind_group_layout,
-        //     entries : &[wgpu::BindGroupEntry {
-        //         binding : 0,
-        //         resource : uniform_buf.as_entire_binding(),
-        //     }],
-        //     label : Some("camera_bind_group"),
-        // });
-        //
         // Create pipeline layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label : None,
@@ -317,15 +292,6 @@ impl Swapchain {
     }
 
     pub fn update(&mut self, delta_time : f32) { self.time += delta_time; }
-
-    pub fn update_camera(&mut self, queue : &wgpu::Queue, size : [f32; 2]) {
-
-        let mx_total = Self::generate_matrix(size[0] / size[1]);
-
-        let mx_ref : &[f32; 16] = mx_total.as_ref();
-
-        queue.write_buffer(&self.uniform_buf, 0, bytemuck::cast_slice(mx_ref));
-    }
 
     // HACK:
 

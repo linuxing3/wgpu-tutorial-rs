@@ -13,6 +13,7 @@ use winit::{
 
 use wgpu_tutorial_rs::swapchain::Swapchain;
 use wgpu_tutorial_rs::texture::Context;
+use wgpu_tutorial_rs::texture::Texture as TextureHelper;
 use wgpu_tutorial_rs::{gpu::Gpu, imgui_layer::Layer};
 
 struct State {
@@ -155,8 +156,7 @@ async fn run() {
         ..Default::default()
     };
 
-    let mut renderer_with_imgui =
-        Renderer::new(&mut imgui, &gpu.device, &gpu.queue, renderer_config);
+    let mut renderer = Renderer::new(&mut imgui, &gpu.device, &gpu.queue, renderer_config);
 
     let mut last_frame = Instant::now();
 
@@ -168,20 +168,15 @@ async fn run() {
 
     // NOTE: Stores a texture for displaying with imgui::Image(),
     // also as a texture view for rendering into it
-
-    let texture_config = TextureConfig {
-        size : wgpu::Extent3d {
-            width : imgui_region_size[0] as u32,
-            height : imgui_region_size[1] as u32,
-            ..Default::default()
+    //
+    let example_texture_id = TextureHelper::new_texture(
+        &mut Context {
+            device : &gpu.device,
+            queue : &gpu.queue,
+            renderer : &mut renderer,
         },
-        usage : wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-        ..Default::default()
-    };
-
-    let texture = Texture::new(&gpu.device, &renderer_with_imgui, texture_config);
-
-    let example_texture_id = renderer_with_imgui.textures.insert(texture);
+        imgui_region_size,
+    );
 
     // HACK: imgui layers
     let mut layers : Vec<Layer> = vec![];
@@ -269,13 +264,14 @@ async fn run() {
 
                 for layer in &mut layers {
 
-                    let texture_context = &mut Context {
-                        device : &gpu.device,
-                        queue : &gpu.queue,
-                        renderer : &mut renderer_with_imgui,
-                    };
-
-                    layer.render(texture_context, ui);
+                    layer.render(
+                        &mut Context {
+                            device : &gpu.device,
+                            queue : &gpu.queue,
+                            renderer : &mut renderer,
+                        },
+                        ui,
+                    );
 
                     if let Some(new_imgui_region_size) = layer.size() {
 
@@ -287,19 +283,24 @@ async fn run() {
 
                             imgui_region_size = new_imgui_region_size;
 
-                            layer.resize(texture_context, ui, imgui_region_size);
+                            layer.resize(
+                                &mut Context {
+                                    device : &gpu.device,
+                                    queue : &gpu.queue,
+                                    renderer : &mut renderer,
+                                },
+                                ui,
+                                imgui_region_size,
+                            );
                         }
 
                         state
                             .swapchain
                             .setup_camera(&gpu.queue, new_imgui_region_size);
 
-                        let view = renderer_with_imgui
-                            .textures
-                            .get(example_texture_id)
-                            .unwrap()
-                            .view();
+                        let view = renderer.textures.get(example_texture_id).unwrap().view();
 
+                        // NOTE: use a separate renderpass
                         state.render(view, &gpu.device, &gpu.queue);
                     }
                 }
@@ -312,7 +313,7 @@ async fn run() {
                 }
 
                 // --------------------------------------------------------------------
-                // NOTE: render all
+                // NOTE: render all, with main renderpass
                 let main_frame = match surface.get_current_texture() {
                     Ok(frame) => frame,
                     Err(e) => {
@@ -346,7 +347,8 @@ async fn run() {
                         depth_stencil_attachment : None,
                     });
 
-                renderer_with_imgui
+                // NOTE: render imgui raw data
+                renderer
                     .render(imgui.render(), &gpu.queue, &gpu.device, &mut renderpass)
                     .expect("Rendering failed");
 

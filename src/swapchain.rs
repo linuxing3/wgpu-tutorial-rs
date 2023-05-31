@@ -26,58 +26,6 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    fn generate_matrix(aspect_ratio : f32) -> cgmath::Matrix4<f32> {
-
-        let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
-
-        let mx_view = cgmath::Matrix4::look_at_rh(
-            cgmath::Point3::new(1.5f32, -5.0, 3.0),
-            cgmath::Point3::new(0f32, 0.0, 0.0),
-            cgmath::Vector3::unit_z(),
-        );
-
-        let mx_correction = OPENGL_TO_WGPU_MATRIX;
-
-        mx_correction * mx_projection * mx_view
-    }
-
-    pub async fn load_model(&mut self, device : &wgpu::Device, queue : &wgpu::Queue) {
-
-        let difusse_texture_entries = [
-            wgpu::BindGroupLayoutEntry {
-                binding : 0,
-                visibility : wgpu::ShaderStages::FRAGMENT,
-                ty : wgpu::BindingType::Texture {
-                    multisampled : false,
-                    view_dimension : wgpu::TextureViewDimension::D2,
-                    sample_type : wgpu::TextureSampleType::Float { filterable : true },
-                },
-                count : None,
-            },
-            wgpu::BindGroupLayoutEntry {
-                binding : 1,
-                visibility : wgpu::ShaderStages::FRAGMENT,
-                // This should match the filterable field of the
-                // corresponding Texture entry above.
-                ty : wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count : None,
-            },
-        ];
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries : &difusse_texture_entries,
-                label : Some("texture_bind_group_layout"),
-            });
-
-        let obj_model =
-            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
-
-        self.obj_model = Some(obj_model);
-    }
-
     pub fn new(
         config : &wgpu::SurfaceConfiguration,
         device : &wgpu::Device,
@@ -552,5 +500,57 @@ impl Swapchain {
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
+    }
+
+    fn generate_matrix(aspect_ratio : f32) -> cgmath::Matrix4<f32> {
+
+        let mx_projection = cgmath::perspective(cgmath::Deg(45f32), aspect_ratio, 1.0, 10.0);
+
+        let mx_view = cgmath::Matrix4::look_at_rh(
+            cgmath::Point3::new(1.5f32, -5.0, 3.0),
+            cgmath::Point3::new(0f32, 0.0, 0.0),
+            cgmath::Vector3::unit_z(),
+        );
+
+        let mx_correction = OPENGL_TO_WGPU_MATRIX;
+
+        mx_correction * mx_projection * mx_view
+    }
+
+    pub async fn load_model(&mut self, device : &wgpu::Device, queue : &wgpu::Queue) {
+
+        let difusse_texture_entries = [
+            wgpu::BindGroupLayoutEntry {
+                binding : 0,
+                visibility : wgpu::ShaderStages::FRAGMENT,
+                ty : wgpu::BindingType::Texture {
+                    multisampled : false,
+                    view_dimension : wgpu::TextureViewDimension::D2,
+                    sample_type : wgpu::TextureSampleType::Float { filterable : true },
+                },
+                count : None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding : 1,
+                visibility : wgpu::ShaderStages::FRAGMENT,
+                // This should match the filterable field of the
+                // corresponding Texture entry above.
+                ty : wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count : None,
+            },
+        ];
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries : &difusse_texture_entries,
+                label : Some("texture_bind_group_layout"),
+            });
+
+        let obj_model =
+            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
+
+        self.obj_model = Some(obj_model);
     }
 }

@@ -23,16 +23,8 @@ fn vs_main(
 @group(1) @binding(0)
 var r_color: texture_2d<u32>;
 
-@group(1) @binding(1)
-var s_color: sampler;
-
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(r_color, s_color, in.tex_coord);
-}
-
-@fragment
-fn fs_main_cube(in: VertexOutput) -> @location(0) vec4<f32> {
     let tex = textureLoad(r_color, vec2<i32>(in.tex_coord * 256.0), 0);
     let v = f32(tex.x) / 255.0;
     return vec4<f32>(1.0 - (v * 5.0), 1.0 - (v * 15.0), 1.0 - (v * 50.0), 1.0);

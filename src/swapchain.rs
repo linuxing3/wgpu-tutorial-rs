@@ -1,6 +1,7 @@
 use crate::{
     camera::{Camera, CameraController, CameraUniform},
-    texture,
+    model::Model,
+    resource, texture,
 };
 use std::mem;
 use wgpu::{include_wgsl, util::DeviceExt, BufferUsages};
@@ -15,6 +16,7 @@ pub struct Swapchain {
     pub camera_bind_group : wgpu::BindGroup,
     pub texture_bind_group : wgpu::BindGroup,
     pub pipeline : wgpu::RenderPipeline,
+    pub obj_model : Option<Model>,
     // camera
     pub uniform_buf : wgpu::Buffer,
     pub camera : Camera,
@@ -37,6 +39,43 @@ impl Swapchain {
         let mx_correction = OPENGL_TO_WGPU_MATRIX;
 
         mx_correction * mx_projection * mx_view
+    }
+
+    pub async fn load_model(&mut self, device : &wgpu::Device, queue : &wgpu::Queue) {
+
+        let difusse_texture_entries = [
+            wgpu::BindGroupLayoutEntry {
+                binding : 0,
+                visibility : wgpu::ShaderStages::FRAGMENT,
+                ty : wgpu::BindingType::Texture {
+                    multisampled : false,
+                    view_dimension : wgpu::TextureViewDimension::D2,
+                    sample_type : wgpu::TextureSampleType::Float { filterable : true },
+                },
+                count : None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding : 1,
+                visibility : wgpu::ShaderStages::FRAGMENT,
+                // This should match the filterable field of the
+                // corresponding Texture entry above.
+                ty : wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count : None,
+            },
+        ];
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries : &difusse_texture_entries,
+                label : Some("texture_bind_group_layout"),
+            });
+
+        let obj_model =
+            resource::load_model("cube.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
+
+        self.obj_model = Some(obj_model);
     }
 
     pub fn new(
@@ -64,16 +103,17 @@ impl Swapchain {
             depth_or_array_layers : 1,
         };
 
-        let (_, cube_texture_view, cube_texture_sampler) =
-            Self::configure_texture_from_image(device, queue);
+        // let (_, cube_texture_view, cube_texture_sampler) =
+        //     Self::configure_texture_from_image(device, queue);
 
-        // let (_, cube_texture_view, cube_texture_sampler) = Self::configure_texture(
-        //     device,
-        //     queue,
-        //     texture_size,
-        //     texture_texels,
-        //     cube_texture_extent,
-        // );
+        let (_, cube_texture_view, cube_texture_sampler) = Self::configure_texture(
+            device,
+            queue,
+            texture_size,
+            texture_texels,
+            cube_texture_extent,
+        );
+
         // uniform
 
         let time = 0.0;
@@ -109,7 +149,7 @@ impl Swapchain {
             Self::configure_texture_bind_group(device, &cube_texture_view, &cube_texture_sampler);
 
         // pipeline
-        let pipeline = Self::configure_pipeline_with_model(
+        let pipeline = Self::configure_pipeline(
             config,
             device,
             &[&camera_bind_group_layout, &texture_bind_group_layout],
@@ -122,6 +162,7 @@ impl Swapchain {
             index_count,
             camera_bind_group,
             texture_bind_group,
+            obj_model : None,
             uniform_buf,
             camera,
             camera_uniform,
@@ -296,7 +337,7 @@ impl Swapchain {
         (camera_bind_group, camera_bind_group_layout)
     }
 
-    fn configure_texture_bind_group(
+    fn configure_texture_sampler_bind_group(
         device : &wgpu::Device,
         cube_texture_view : &wgpu::TextureView,
         cube_texture_sampler : &wgpu::Sampler,
@@ -344,14 +385,44 @@ impl Swapchain {
         (texture_bind_group, texture_bind_group_layout)
     }
 
+    fn configure_texture_bind_group(
+        device : &wgpu::Device,
+        cube_texture_view : &wgpu::TextureView,
+        cube_texture_sampler : &wgpu::Sampler,
+    ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
+
+        // Create pipeline layout
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label : None,
+                entries : &[wgpu::BindGroupLayoutEntry {
+                    binding : 0,
+                    visibility : wgpu::ShaderStages::FRAGMENT,
+                    ty : wgpu::BindingType::Texture {
+                        multisampled : false,
+                        view_dimension : wgpu::TextureViewDimension::D2,
+                        sample_type : wgpu::TextureSampleType::Uint, // BUG:
+                    },
+                    count : None,
+                }],
+            });
+
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout : &texture_bind_group_layout,
+            entries : &[wgpu::BindGroupEntry {
+                binding : 0,
+                resource : wgpu::BindingResource::TextureView(&cube_texture_view),
+            }],
+            label : None,
+        });
+
+        (texture_bind_group, texture_bind_group_layout)
+    }
+
     fn configure_pipeline_with_model(
-        config : &wgpu::SurfaceConfiguration,
         device : &wgpu::Device,
         bind_group_layouts : &[&wgpu::BindGroupLayout],
     ) -> wgpu::RenderPipeline {
-
-        // Create the vertex and index buffers
-        let vertex_size = mem::size_of::<ImVertex>();
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label : None,
@@ -359,24 +430,9 @@ impl Swapchain {
             push_constant_ranges : &[],
         });
 
-        let shader = device.create_shader_module(include_wgsl!("../assets/shaders/cube.wgsl"));
+        let shader = device.create_shader_module(include_wgsl!("../assets/shaders/shader.wgsl"));
 
-        let vertex_buffers = [wgpu::VertexBufferLayout {
-            array_stride : vertex_size as wgpu::BufferAddress,
-            step_mode : wgpu::VertexStepMode::Vertex,
-            attributes : &[
-                wgpu::VertexAttribute {
-                    format : wgpu::VertexFormat::Float32x4,
-                    offset : 0,
-                    shader_location : 0,
-                },
-                wgpu::VertexAttribute {
-                    format : wgpu::VertexFormat::Float32x2,
-                    offset : 4 * 4,
-                    shader_location : 1,
-                },
-            ],
-        }];
+        use crate::model::ModelVertex;
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label : None,
@@ -384,16 +440,30 @@ impl Swapchain {
             vertex : wgpu::VertexState {
                 module : &shader,
                 entry_point : "vs_main",
-                buffers : &vertex_buffers,
+                buffers : &[ModelVertex::desc()],
             },
             fragment : Some(wgpu::FragmentState {
                 module : &shader,
                 entry_point : "fs_main",
-                targets : &[Some(config.format.into())],
+                // targets : &[Some(config.format.into())],
+                targets : &[Some(wgpu::ColorTargetState {
+                    // 4.
+                    format : wgpu::TextureFormat::Bgra8UnormSrgb,
+                    blend : Some(wgpu::BlendState::REPLACE),
+                    write_mask : wgpu::ColorWrites::ALL,
+                })],
             }),
             primitive : wgpu::PrimitiveState {
+                topology : wgpu::PrimitiveTopology::TriangleList, // 1.
+                strip_index_format : None,
+                front_face : wgpu::FrontFace::Ccw, // 2.
                 cull_mode : Some(wgpu::Face::Back),
-                ..Default::default()
+                // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                polygon_mode : wgpu::PolygonMode::Fill,
+                // Requires Features::DEPTH_CLIP_CONTROL
+                unclipped_depth : false,
+                // Requires Features::CONSERVATIVE_RASTERIZATION
+                conservative : false,
             },
             depth_stencil : None,
             multisample : wgpu::MultisampleState::default(),
@@ -442,12 +512,12 @@ impl Swapchain {
             layout : Some(&pipeline_layout),
             vertex : wgpu::VertexState {
                 module : &shader,
-                entry_point : "vs_main_cube",
+                entry_point : "vs_main",
                 buffers : &vertex_buffers,
             },
             fragment : Some(wgpu::FragmentState {
                 module : &shader,
-                entry_point : "fs_main_cube",
+                entry_point : "fs_main",
                 targets : &[Some(config.format.into())],
             }),
             primitive : wgpu::PrimitiveState {

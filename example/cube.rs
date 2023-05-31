@@ -111,7 +111,8 @@ struct Example {
     vertex_buf : wgpu::Buffer,
     index_buf : wgpu::Buffer,
     index_count : usize,
-    bind_group : wgpu::BindGroup,
+    camera_bind_group : wgpu::BindGroup,
+    texture_bind_group : wgpu::BindGroup,
     uniform_buf : wgpu::Buffer,
     pipeline : wgpu::RenderPipeline,
     time : f32,
@@ -161,10 +162,10 @@ impl Example {
         });
 
         // Create pipeline layout
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label : None,
-            entries : &[
-                wgpu::BindGroupLayoutEntry {
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label : Some("camera_bind_group_layout"),
+                entries : &[wgpu::BindGroupLayoutEntry {
                     binding : 0,
                     visibility : wgpu::ShaderStages::VERTEX,
                     ty : wgpu::BindingType::Buffer {
@@ -173,9 +174,14 @@ impl Example {
                         min_binding_size : wgpu::BufferSize::new(64),
                     },
                     count : None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding : 1,
+                }],
+            });
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label : Some("texture_bind_group_layout"),
+                entries : &[wgpu::BindGroupLayoutEntry {
+                    binding : 0,
                     visibility : wgpu::ShaderStages::FRAGMENT,
                     ty : wgpu::BindingType::Texture {
                         multisampled : false,
@@ -183,13 +189,12 @@ impl Example {
                         view_dimension : wgpu::TextureViewDimension::D2,
                     },
                     count : None,
-                },
-            ],
-        });
+                }],
+            });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label : None,
-            bind_group_layouts : &[&bind_group_layout],
+            bind_group_layouts : &[&camera_bind_group_layout, &texture_bind_group_layout],
             push_constant_ranges : &[],
         });
 
@@ -240,18 +245,21 @@ impl Example {
         });
 
         // Create bind group
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout : &bind_group_layout,
-            entries : &[
-                wgpu::BindGroupEntry {
-                    binding : 0,
-                    resource : uniform_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding : 1,
-                    resource : wgpu::BindingResource::TextureView(&texture_view),
-                },
-            ],
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout : &camera_bind_group_layout,
+            entries : &[wgpu::BindGroupEntry {
+                binding : 0,
+                resource : uniform_buf.as_entire_binding(),
+            }],
+            label : Some("camera_bind_group"),
+        });
+
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout : &texture_bind_group_layout,
+            entries : &[wgpu::BindGroupEntry {
+                binding : 0,
+                resource : wgpu::BindingResource::TextureView(&texture_view),
+            }],
             label : None,
         });
 
@@ -301,7 +309,8 @@ impl Example {
             vertex_buf,
             index_buf,
             index_count : index_data.len(),
-            bind_group,
+            camera_bind_group,
+            texture_bind_group,
             uniform_buf,
             pipeline,
             time : 0.0,
@@ -348,7 +357,9 @@ impl Example {
 
             rpass.set_pipeline(&self.pipeline);
 
-            rpass.set_bind_group(0, &self.bind_group, &[]);
+            rpass.set_bind_group(0, &self.camera_bind_group, &[]);
+
+            rpass.set_bind_group(1, &self.texture_bind_group, &[]);
 
             rpass.set_index_buffer(self.index_buf.slice(..), wgpu::IndexFormat::Uint16);
 

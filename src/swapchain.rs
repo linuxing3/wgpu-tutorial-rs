@@ -3,7 +3,6 @@ use crate::{
     model::Model,
     resource,
     share::create_empty_texels,
-    texture,
 };
 use std::mem;
 use wgpu::{include_wgsl, util::DeviceExt, BufferUsages};
@@ -233,7 +232,7 @@ impl Swapchain {
             ..Default::default()
         });
 
-        // copy data into texture
+        // HACK: copy data into texture
         queue.write_texture(
             cube_texture.as_image_copy(),
             &texture_texels,

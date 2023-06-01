@@ -17,6 +17,25 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
+#[derive(Copy, Clone)]
+
+enum Color {
+    Red,
+    Green,
+    Blue,
+    White,
+}
+
+fn create_texture_data(color : Color) -> [u8; 4] {
+
+    match color {
+        Color::Red => [15, 0, 0, 15],
+        Color::Green => [0, 15, 0, 15],
+        Color::Blue => [0, 0, 15, 15],
+        Color::White => [15, 15, 15, 15],
+    }
+}
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 
@@ -166,15 +185,26 @@ pub fn create_vertices() -> (Vec<ImVertex>, Vec<u16>) {
 
 pub fn create_empty_texels(width : usize, height : usize) -> Vec<u8> {
 
+    let red_texture_data = create_texture_data(Color::Red);
+
+    let green_texture_data = create_texture_data(Color::Green);
+
+    let blue_texture_data = create_texture_data(Color::Blue);
+
+    let white_texture_data = create_texture_data(Color::White);
+
     (0..width * height)
         .map(|id| {
 
             // get high five for recognizing this ;)
-            let mut count = 16;
+            let mut count = 0;
 
-            if (id % 2) == 0 {
+            for b in 0..3 {
 
-                count = 8;
+                if (id % 4) == b {
+
+                    count = red_texture_data[b];
+                }
             }
 
             count

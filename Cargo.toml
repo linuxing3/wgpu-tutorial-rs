@@ -46,19 +46,22 @@ glob = "0.3"
 #     "Window",
 #     "Element",
 # ]}
+[[bin]]
+name = "triangle"
+path = "example/triangle.rs"
 
 [[bin]]
-name = "00"
+name = "cube"
 path = "example/cube.rs"
 
 [[bin]]
-name = "01"
+name = "custom-texture"
 path = "example/custom-texture.rs"
 
 [[bin]]
-name = "02"
+name = "imgui-image"
 path = "example/imgui-image-file.rs"
 
 [[bin]]
-name = "03"
+name = "imgui-cube"
 path = "example/imgui-texel-image.rs"

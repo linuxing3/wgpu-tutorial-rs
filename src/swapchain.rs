@@ -39,7 +39,7 @@ impl Swapchain {
 
         let (vertex_buf, index_buf) = Self::configure_vertex(device, vertex_data, index_data);
 
-        // texture
+        // NOTE: texture underlay, data copied
 
         let texture_size = 256u32;
 
@@ -50,9 +50,6 @@ impl Swapchain {
             height : texture_size,
             depth_or_array_layers : 1,
         };
-
-        // let (_, cube_texture_view, cube_texture_sampler) =
-        //     Self::configure_texture_from_image(device, queue);
 
         let (_, cube_texture_view, cube_texture_sampler) = Self::configure_texture(
             device,
@@ -207,6 +204,7 @@ impl Swapchain {
         cube_texture_extent : wgpu::Extent3d,
     ) -> (wgpu::Texture, wgpu::TextureView, wgpu::Sampler) {
 
+        // here texture as copy destination
         let cube_texture = device.create_texture(&wgpu::TextureDescriptor {
             label : None,
             size : cube_texture_extent,
@@ -233,6 +231,7 @@ impl Swapchain {
             ..Default::default()
         });
 
+        // copy data into texture
         queue.write_texture(
             cube_texture.as_image_copy(),
             &texture_texels,

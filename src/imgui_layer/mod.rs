@@ -9,6 +9,8 @@ pub struct Layer {
 impl Layer {
     pub fn new(texture_id : TextureId, size : [f32; 2]) -> Layer {
 
+        println!("texture id is: {}", texture_id.id());
+
         Layer {
             texture_id,
             size : Some(size),
@@ -21,7 +23,7 @@ impl Layer {
 
     pub fn id(&mut self) -> TextureId { self.texture_id }
 
-    pub fn set_bytes(&mut self, context : &mut Context, bytes : &[u8]) {
+    fn set_bytes(&mut self, context : &mut Context, bytes : &[u8]) {
 
         println!("Got source, setting texture from file");
 
@@ -34,7 +36,7 @@ impl Layer {
         context.renderer.textures.replace(self.texture_id, texture);
     }
 
-    pub fn set_texels(&mut self, context : &mut Context, size : u32, texture_texels : Vec<u8>) {
+    fn set_texels(&mut self, context : &mut Context, size : u32, texture_texels : Vec<u8>) {
 
         let texture = Texture::recreate_image(context, size, &texture_texels);
 
@@ -43,10 +45,10 @@ impl Layer {
         context.renderer.textures.replace(self.texture_id, texture);
     }
 
-    pub fn render(&mut self, _context : &mut Context, ui : &mut Ui) {
+    pub fn render(&mut self, _context : &mut Context, ui : &mut Ui, title : &str) {
 
-        ui.window("Cube")
-            .size([512.0, 512.0], imgui::Condition::FirstUseEver)
+        ui.window(title)
+            .size(self.size().unwrap(), imgui::Condition::FirstUseEver)
             .build(|| {
 
                 self.size = Some(ui.content_region_avail());

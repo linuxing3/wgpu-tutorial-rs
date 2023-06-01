@@ -1,5 +1,5 @@
 use imgui::*;
-use imgui_wgpu::{Renderer, RendererConfig, Texture, TextureConfig};
+use imgui_wgpu::{Renderer, RendererConfig};
 use imgui_winit_support::WinitPlatform;
 use pollster::block_on;
 
@@ -13,7 +13,7 @@ use winit::{
 
 use wgpu_tutorial_rs::swapchain::Swapchain;
 use wgpu_tutorial_rs::texture::Context;
-use wgpu_tutorial_rs::texture::Texture as TextureHelper;
+use wgpu_tutorial_rs::texture::Texture as ImguiTexture;
 use wgpu_tutorial_rs::{gpu::Gpu, imgui_layer::Layer};
 
 struct State {
@@ -166,10 +166,11 @@ async fn run() {
 
     let mut state = State::init(&gpu.surface_desc, &gpu.device, &gpu.queue);
 
-    // NOTE: Stores a texture for displaying with imgui::Image(),
+    // NOTE: Stores a imgui texture wrapper for displaying with imgui::Image(),
     // also as a texture view for rendering into it
     //
-    let example_texture_id = TextureHelper::new_texture(
+    //
+    let cube_imgui_texture = ImguiTexture::new_texture(
         &mut Context {
             device : &gpu.device,
             queue : &gpu.queue,
@@ -178,12 +179,29 @@ async fn run() {
         imgui_region_size,
     );
 
+    let cube_imgui_texture_id = renderer.textures.insert(cube_imgui_texture);
+
+    let empty_imgui_texture = ImguiTexture::new_texture(
+        &mut Context {
+            device : &gpu.device,
+            queue : &gpu.queue,
+            renderer : &mut renderer,
+        },
+        imgui_region_size,
+    );
+
+    let empty_imgui_texture_id = renderer.textures.insert(empty_imgui_texture);
+
     // HACK: imgui layers
     let mut layers : Vec<Layer> = vec![];
 
-    let x_layer = Layer::new(example_texture_id, [256.0, 256.0]);
+    let x_layer = Layer::new(cube_imgui_texture_id, [256.0, 256.0]);
+
+    let y_layer = Layer::new(empty_imgui_texture_id, [256.0, 256.0]);
 
     layers.push(x_layer);
+
+    layers.push(y_layer);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {
@@ -264,6 +282,8 @@ async fn run() {
 
                 for layer in &mut layers {
 
+                    let title = "window".to_string() + &layer.id().id().to_string();
+
                     layer.render(
                         &mut Context {
                             device : &gpu.device,
@@ -271,6 +291,7 @@ async fn run() {
                             renderer : &mut renderer,
                         },
                         ui,
+                        &title,
                     );
 
                     if let Some(new_imgui_region_size) = layer.size() {
@@ -298,7 +319,7 @@ async fn run() {
                             .swapchain
                             .setup_camera(&gpu.queue, new_imgui_region_size);
 
-                        let view = renderer.textures.get(example_texture_id).unwrap().view();
+                        let view = renderer.textures.get(layer.id()).unwrap().view();
 
                         // NOTE: use a separate renderpass
                         state.render(view, &gpu.device, &gpu.queue);

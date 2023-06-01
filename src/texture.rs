@@ -2,6 +2,8 @@ use anyhow::*;
 use image::{DynamicImage, GenericImageView, RgbaImage};
 use std::num::NonZeroU32;
 
+use crate::share::create_cube_texels;
+
 pub struct Context<'a> {
     pub device : &'a wgpu::Device,
     pub queue : &'a wgpu::Queue,
@@ -71,7 +73,7 @@ impl Texture {
         }
     }
 
-    pub fn new_texture(context : &mut Context, size : [f32; 2]) -> imgui::TextureId {
+    pub fn new_texture(context : &mut Context, size : [f32; 2]) -> imgui_wgpu::Texture {
 
         // Stores a texture for displaying with imgui::Image(),
         // also as a texture view for rendering into it
@@ -86,11 +88,10 @@ impl Texture {
             ..Default::default()
         };
 
-        let texture = imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config);
+        let imgui_texture_wrapper =
+            imgui_wgpu::Texture::new(&context.device, &context.renderer, texture_config);
 
-        let texture_id = context.renderer.textures.insert(texture);
-
-        texture_id
+        imgui_texture_wrapper
     }
 
     pub fn from_bytes(bytes : &[u8], context : &Context, label : &str) -> Result<Self> {

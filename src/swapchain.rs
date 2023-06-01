@@ -1,7 +1,9 @@
 use crate::{
     camera::{Camera, CameraController, CameraUniform},
     model::Model,
-    resource, texture,
+    resource,
+    share::create_empty_texels,
+    texture,
 };
 use std::mem;
 use wgpu::{include_wgsl, util::DeviceExt, BufferUsages};
@@ -43,7 +45,7 @@ impl Swapchain {
 
         let texture_size = 256u32;
 
-        let texture_texels = create_cube_texels(texture_size as usize);
+        let texture_texels = create_empty_texels(texture_size as usize, texture_size as usize);
 
         let cube_texture_extent = wgpu::Extent3d {
             width : texture_size,

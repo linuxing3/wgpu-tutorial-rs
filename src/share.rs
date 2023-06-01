@@ -1,4 +1,5 @@
 use bytemuck;
+use cgmath::num_traits::{PrimInt, ToPrimitive};
 
 pub const NUM_INSTANCES_PER_ROW : u32 = 10;
 
@@ -163,15 +164,33 @@ pub fn create_vertices() -> (Vec<ImVertex>, Vec<u16>) {
     (vertex_data.to_vec(), index_data.to_vec())
 }
 
-pub fn create_cube_texels(size : usize) -> Vec<u8> {
+pub fn create_empty_texels(width : usize, height : usize) -> Vec<u8> {
 
-    (0..size * size)
+    (0..width * height)
         .map(|id| {
 
             // get high five for recognizing this ;)
-            let cx = 3.0 * (id % size) as f32 / (size - 1) as f32 - 2.0;
+            let mut count = 16;
 
-            let cy = 2.0 * (id / size) as f32 / (size - 1) as f32 - 1.0;
+            if (id % 2) == 0 {
+
+                count = 8;
+            }
+
+            count
+        })
+        .collect()
+}
+
+pub fn create_cube_texels(width : usize, height : usize) -> Vec<u8> {
+
+    (0..width * height)
+        .map(|id| {
+
+            // get high five for recognizing this ;)
+            let cx = 3.0 * (id % width) as f32 / (width - 1) as f32 - 2.0;
+
+            let cy = 2.0 * (id / height) as f32 / (height - 1) as f32 - 1.0;
 
             let (mut x, mut y, mut count) = (cx, cy, 0);
 
@@ -183,12 +202,32 @@ pub fn create_cube_texels(size : usize) -> Vec<u8> {
 
                 y = 2.0 * old_x * y + cy;
 
+                println!("{}  {}", x, y);
+
                 count += 1;
+
+                println!("color {}", count);
             }
 
             count
         })
         .collect()
+}
+
+#[cfg(test)]
+
+mod test {
+
+    use super::*;
+
+    #[test]
+
+    fn test_cube_texels() {
+
+        let r = create_cube_texels(256, 256);
+
+        assert_eq!(r[0], 0);
+    }
 }
 
 pub struct Instance {

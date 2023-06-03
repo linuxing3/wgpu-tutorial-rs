@@ -376,7 +376,7 @@ async fn run() {
                 drop(renderpass);
 
                 // NOTE: render background image
-                state.render(&view, &gpu.device, &gpu.queue);
+                // state.render(&view, &gpu.device, &gpu.queue);
 
                 gpu.queue.submit(Some(command_encoder.finish()));
 

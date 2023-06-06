@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-executor = "1"
 env_logger = "0.10.0"
 log = "0.4.17"
 wgpu = "0.15.0"
@@ -21,6 +22,7 @@ pollster = "0.2"
 bytemuck = { version = "1.13.1", features = ["derive"] }
 anyhow = "1.0"
 cgmath = "0.18"
+
 tobj = { version = "3.2.1", features = [
     "async",
 ]}
@@ -29,6 +31,9 @@ tobj = { version = "3.2.1", features = [
 version = "0.24"
 default-features = false
 features = ["png", "jpeg"]
+
+[dependencies.png]
+version = "0.17.8"
 
 [build-dependencies]
 anyhow = "1.0"
@@ -65,3 +70,8 @@ path = "example/imgui-image-file.rs"
 [[bin]]
 name = "imgui-cube"
 path = "example/imgui-texel-image.rs"
+
+[[bin]]
+name = "imgui-model"
+path = "example/imgui-model/main.rs"
+

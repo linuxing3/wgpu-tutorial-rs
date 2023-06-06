@@ -31,6 +31,8 @@ impl Swapchain {
         config : &wgpu::SurfaceConfiguration,
         device : &wgpu::Device,
         queue : &wgpu::Queue,
+        texture_size : u32,
+        texture_texels : Vec<u8>,
     ) -> Self {
 
         //vertex index
@@ -39,12 +41,6 @@ impl Swapchain {
         let index_count = index_data.len();
 
         let (vertex_buf, index_buf) = Self::configure_vertex(device, vertex_data, index_data);
-
-        // NOTE: texture underlay, data copied
-
-        let texture_size = 256u32;
-
-        let texture_texels = create_empty_texels(texture_size as usize, texture_size as usize);
 
         let cube_texture_extent = wgpu::Extent3d {
             width : texture_size,

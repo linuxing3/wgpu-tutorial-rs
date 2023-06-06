@@ -1,4 +1,5 @@
 pub mod camera;
+pub mod framework;
 pub mod gpu;
 pub mod imgui_layer;
 pub mod model;

@@ -232,11 +232,7 @@ pub fn create_cube_texels(width : usize, height : usize) -> Vec<u8> {
 
                 y = 2.0 * old_x * y + cy;
 
-                println!("{}  {}", x, y);
-
                 count += 1;
-
-                println!("color {}", count);
             }
 
             count

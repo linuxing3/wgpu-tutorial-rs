@@ -11,13 +11,14 @@ use winit::{
     window::Window,
 };
 
-use wgpu_tutorial_rs::swapchain::Swapchain;
-use wgpu_tutorial_rs::texture::Context;
 use wgpu_tutorial_rs::texture::Texture as ImguiTexture;
 use wgpu_tutorial_rs::{gpu::Gpu, imgui_layer::Layer};
+use wgpu_tutorial_rs::{share::create_cube_texels, texture::Context};
+use wgpu_tutorial_rs::{share::create_empty_texels, swapchain::Swapchain};
 
 struct State {
-    swapchain : Swapchain,
+    swapchain1 : Swapchain,
+    swapchain2 : Swapchain,
 }
 
 impl State {
@@ -27,34 +28,69 @@ impl State {
         queue : &wgpu::Queue,
     ) -> Self {
 
-        let swapchain = Swapchain::new(config, device, queue);
+        // NOTE: texture underlay, data copied
+
+        let texture_texels_1 = create_empty_texels(256, 256);
+
+        let texture_texels_2 = create_cube_texels(128, 128);
+
+        let swapchain1 = Swapchain::new(config, device, queue, 256u32, texture_texels_1);
+
+        let swapchain2 = Swapchain::new(config, device, queue, 123u32, texture_texels_2);
 
         // Done
-        State { swapchain }
+        State {
+            swapchain1,
+            swapchain2,
+        }
     }
 
-    pub fn render_with_rpass<'r>(&'r mut self, rpass : &mut wgpu::RenderPass<'r>) {
+    pub fn render_swapchain_1<'r>(&'r mut self, rpass : &mut wgpu::RenderPass<'r>) {
 
         rpass.push_debug_group("Prepare data for draw.");
 
-        rpass.set_pipeline(&self.swapchain.pipeline);
+        rpass.set_pipeline(&self.swapchain1.pipeline);
 
-        rpass.set_bind_group(0, &self.swapchain.camera_bind_group, &[]);
+        rpass.set_bind_group(0, &self.swapchain1.camera_bind_group, &[]);
 
-        rpass.set_bind_group(1, &self.swapchain.texture_bind_group, &[]);
+        rpass.set_bind_group(1, &self.swapchain1.texture_bind_group, &[]);
 
         rpass.set_index_buffer(
-            self.swapchain.index_buf.slice(..),
+            self.swapchain1.index_buf.slice(..),
             wgpu::IndexFormat::Uint16,
         );
 
-        rpass.set_vertex_buffer(0, self.swapchain.vertex_buf.slice(..));
+        rpass.set_vertex_buffer(0, self.swapchain1.vertex_buf.slice(..));
 
         rpass.pop_debug_group();
 
         rpass.insert_debug_marker("Draw!");
 
-        rpass.draw_indexed(0..self.swapchain.index_count as u32, 0, 0..1);
+        rpass.draw_indexed(0..self.swapchain1.index_count as u32, 0, 0..1);
+    }
+
+    pub fn render_swapchain_2<'r>(&'r mut self, rpass : &mut wgpu::RenderPass<'r>) {
+
+        rpass.push_debug_group("Prepare data for draw.");
+
+        rpass.set_pipeline(&self.swapchain2.pipeline);
+
+        rpass.set_bind_group(0, &self.swapchain2.camera_bind_group, &[]);
+
+        rpass.set_bind_group(1, &self.swapchain2.texture_bind_group, &[]);
+
+        rpass.set_index_buffer(
+            self.swapchain2.index_buf.slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
+
+        rpass.set_vertex_buffer(0, self.swapchain2.vertex_buf.slice(..));
+
+        rpass.pop_debug_group();
+
+        rpass.insert_debug_marker("Draw!");
+
+        rpass.draw_indexed(0..self.swapchain2.index_count as u32, 0, 0..1);
     }
 
     fn render(&mut self, view : &wgpu::TextureView, device : &wgpu::Device, queue : &wgpu::Queue) {
@@ -65,7 +101,7 @@ impl State {
         {
 
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label : None,
+                label : Some("Child Renderpass"),
                 color_attachments : &[Some(wgpu::RenderPassColorAttachment {
                     view,
                     resolve_target : None,
@@ -82,7 +118,30 @@ impl State {
                 depth_stencil_attachment : None,
             });
 
-            self.render_with_rpass(&mut rpass);
+            self.render_swapchain_1(&mut rpass);
+        }
+
+        {
+
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label : Some("Child Renderpass"),
+                color_attachments : &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target : None,
+                    ops : wgpu::Operations {
+                        load : wgpu::LoadOp::Clear(wgpu::Color {
+                            r : 0.1,
+                            g : 0.2,
+                            b : 0.3,
+                            a : 1.0,
+                        }),
+                        store : true,
+                    },
+                })],
+                depth_stencil_attachment : None,
+            });
+
+            self.render_swapchain_2(&mut rpass);
         }
 
         queue.submit(Some(encoder.finish()));
@@ -168,8 +227,6 @@ async fn run() {
 
     // NOTE: Stores a imgui texture wrapper for displaying with imgui::Image(),
     // also as a texture view for rendering into it
-    //
-    //
     let cube_imgui_texture = ImguiTexture::new_texture(
         &mut Context {
             device : &gpu.device,
@@ -195,13 +252,13 @@ async fn run() {
     // HACK: imgui layers
     let mut layers : Vec<Layer> = vec![];
 
-    let x_layer = Layer::new(cube_imgui_texture_id, [256.0, 256.0]);
+    let layer1 = Layer::new(empty_imgui_texture_id, [256.0, 256.0]);
 
-    let y_layer = Layer::new(empty_imgui_texture_id, [256.0, 256.0]);
+    let layer2 = Layer::new(cube_imgui_texture_id, [256.0, 256.0]);
 
-    layers.push(x_layer);
+    layers.push(layer1);
 
-    layers.push(y_layer);
+    layers.push(layer2);
 
     // Event loop
     event_loop.run(move |event, _, control_flow| {
@@ -239,7 +296,25 @@ async fn run() {
                 ref event,
                 window_id: _,
             } => {
-                if !state.swapchain.handle_input(event) {
+
+                if !state.swapchain1.handle_input(event) {
+
+                    match event {
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        } => *control_flow = ControlFlow::Exit,
+                        _ => {}
+                    }
+                }
+
+                if !state.swapchain2.handle_input(event) {
 
                     match event {
                         WindowEvent::CloseRequested
@@ -274,10 +349,17 @@ async fn run() {
                 let ui = imgui.frame();
 
                 // Render example normally at background
-                state.swapchain.update(ui.io().delta_time);
+                state.swapchain1.update(ui.io().delta_time);
 
                 state
-                    .swapchain
+                    .swapchain1
+                    .setup_camera(&gpu.queue, ui.io().display_size);
+
+                // Render example normally at background
+                state.swapchain2.update(ui.io().delta_time);
+
+                state
+                    .swapchain2
                     .setup_camera(&gpu.queue, ui.io().display_size);
 
                 for layer in &mut layers {
@@ -316,7 +398,11 @@ async fn run() {
                         }
 
                         state
-                            .swapchain
+                            .swapchain1
+                            .setup_camera(&gpu.queue, new_imgui_region_size);
+
+                        state
+                            .swapchain2
                             .setup_camera(&gpu.queue, new_imgui_region_size);
 
                         let view = renderer.textures.get(layer.id()).unwrap().view();
@@ -333,8 +419,6 @@ async fn run() {
                     platform.prepare_render(ui, &window);
                 }
 
-                // --------------------------------------------------------------------
-                // NOTE: render all, with main renderpass
                 let main_frame = match surface.get_current_texture() {
                     Ok(frame) => frame,
                     Err(e) => {
@@ -355,7 +439,7 @@ async fn run() {
 
                 let mut renderpass =
                     command_encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label : None,
+                        label : Some("Main renderpass"),
                         color_attachments : &[Some(wgpu::RenderPassColorAttachment {
                             view : &view,
                             resolve_target : None,
@@ -376,7 +460,7 @@ async fn run() {
                 drop(renderpass);
 
                 // NOTE: render background image
-                // state.render(&view, &gpu.device, &gpu.queue);
+                state.render(&view, &gpu.device, &gpu.queue);
 
                 gpu.queue.submit(Some(command_encoder.finish()));
 

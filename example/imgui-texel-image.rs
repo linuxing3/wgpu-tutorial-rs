@@ -32,11 +32,11 @@ impl State {
 
         let texture_texels_1 = create_empty_texels(256, 256);
 
-        let texture_texels_2 = create_cube_texels(128, 128);
+        let texture_texels_2 = create_cube_texels(192, 192);
 
         let swapchain1 = Swapchain::new(config, device, queue, 256u32, texture_texels_1);
 
-        let swapchain2 = Swapchain::new(config, device, queue, 123u32, texture_texels_2);
+        let swapchain2 = Swapchain::new(config, device, queue, 192u32, texture_texels_2);
 
         // Done
         State {

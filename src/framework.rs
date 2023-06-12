@@ -340,6 +340,8 @@ fn start<E : Example>(
 
     log::info!("Initializing the example...");
 
+    // NOTE: Set up dear imgui wgpu renderer
+
     let mut example = E::init(&config, &adapter, &device, &queue);
 
     #[cfg(not(target_arch = "wasm32"))]
